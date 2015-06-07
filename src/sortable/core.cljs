@@ -14,21 +14,28 @@
 (def box-width 100)
 (def box-height 100)
 
+;; This should be changed to DOM based
 (defn box-center [box]
   (letfn [(add [kb ko]
             (+ (kb box) (/ (ko box) 2)))]
     [(add :left :width) (add :top :height)]))
 
 (defn build-box
-  [id top left]
+  [id]
   {:id id 
-   :top top
-   :left left
    :width box-width
-   :height box-height 
-   :hue (pos->hue [top left])})
+   :height (+ box-height (* 10 id)) 
+   :hue (pos->hue [(rand-int 500) (rand-int 500)])})
 
-(def init-state {:boxes (mapv #(build-box % (* % box-height) 0) (range 5))
+(defn filler-box? [box]
+  (= "filler-box" (:id box)))
+
+(defn filler-box []
+  {:id "filler-box"
+   :width box-width
+   :height box-height})
+
+(def init-state {:boxes (mapv build-box (range 5))
                  :drag nil})
 
 (defn in-box?
@@ -51,11 +58,13 @@
   [left top])
 
 (defn locate-box [box]
-  (let [node (.getElementById js/document (:id box))
-        final-pos (style/getPageOffset node)
-        left (.-x final-pos)
-        top (.-y final-pos)]
-    (assoc box :left left :top top)))
+  (if (or (filler-box? box) (moving? box))
+    box
+    (let [node (.getElementById js/document (:id box))
+          final-pos (style/getPageOffset node)
+          left (.-x final-pos)
+          top (.-y final-pos)]
+      (assoc box :left left :top top))))
 
 (defn start-dragging-box-from-pos
   [pos box]
@@ -70,9 +79,16 @@
       (update-in [:boxes]
         (fn [boxes]
           (->> (map locate-box boxes)
-            (mapv #(cond->> %
-                     (drag-target? %) (start-dragging-box-from-pos pos))))))
+            (mapcat #(if (drag-target? %)
+                       [(filler-box) (start-dragging-box-from-pos pos %)]
+                       [%]))
+            vec)))
       (assoc :drag {:start-pos pos}))))
+
+(defn sort-by-pos [boxes]
+  (->> (map locate-box boxes)
+    (sort-by (comp second box-center))
+    vec))
 
 (defn drag
   "Updates the state by interpreting what the new position means for each box."
@@ -82,7 +98,13 @@
               (assoc box :left left :top top)))]
     (update-in state [:boxes]
       (fn [boxes]
-        (mapv #(if (moving? %) (drag-to-pos %) %) boxes)))))
+        (let [target (drag-to-pos (first (filter moving? boxes)))]
+          (->> boxes
+            (map #(if (filler-box? %)
+                    (merge % (select-keys target [:left :top]))
+                    %))
+            (map #(if (moving? %) target %))
+            sort-by-pos))))))
 
 (defn drop-boxes
   [state]
@@ -90,12 +112,12 @@
             (dissoc box :drag-offset :top :left))]
     (update-in state [:boxes] (partial into [] (map drop-box)))))
 
+
 (defn stop-drag
   [state]
   (-> state
-    (update-in [:boxes] #(->> (map locate-box %)
-                           (sort-by (comp second box-center))
-                           vec ))
+    (update-in [:boxes] #(vec (remove filler-box? %)))
+    (update-in [:boxes] sort-by-pos)
     drop-boxes
     (assoc :drag nil)))
 
@@ -133,23 +155,36 @@
 
 (defn box-color
   [box]
-  (let [opacity (if (moving? box)  0.5 1)]
+  (let [opacity (if (moving? box) 0.5 1)]
     (str "hsla(" (:hue box) ",50%,50%," opacity ")")))
 
-(defn render-box
-  [box]
-  (when box
-    (dom/div
-      #js {:id (:id box)
-           :class "sortable-container"
-           :style (clj->js (cond-> {:backgroundColor (box-color box)
-                                    :position "relative"
-                                    :width (:width box)
-                                    :height (:height box)}
-                             (moving? box) (merge {:position "absolute"
-                                                   :top (:top box)
-                                                   :left (:left box)})))}
-      (:id box))))
+(defn sort-wrapper [box owner opts]
+  (reify
+    om/IDisplayName (display-name [_] "SortWrapper")
+    om/IRender
+    (render [_]
+      (println box)
+      (dom/div #js {:id (:id box)
+                    :class "sortable-container"
+                    :style                    
+                    (clj->js (cond-> {:position "relative"}
+                               (moving? box) (merge {:position "absolute"
+                                                     :top (:top box)
+                                                     :left (:left box)})))}
+        (om/build (:box-view opts) box)))))
+
+;; Example
+
+(defn render-box [box owner]
+  (reify
+    om/IDisplayName (display-name [_] "Box")
+    om/IRender
+    (render [_]
+      (when box
+        (dom/div #js {:style #js {:backgroundColor (box-color box)
+                                  :width (:width box)
+                                  :height (:height box)}}
+          (:id box))))))
 
 (defn render-state
   [state]
@@ -160,7 +195,7 @@
                             :-ms-user-select "none"
                             :user-select "none"}}
     (apply dom/div nil
-      (map render-box (:boxes state)))
+      (om/build-all sort-wrapper (:boxes state) {:opts {:box-view render-box}}))
     (dom/div #js {:style #js {:position "relative"}}
       (dom/h1 nil "Drag and drop")
       (dom/pre nil (.stringify js/JSON (clj->js state) nil 2)))))
