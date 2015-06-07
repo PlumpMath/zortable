@@ -14,6 +14,11 @@
 (def box-width 100)
 (def box-height 100)
 
+(defn box-center [box]
+  (letfn [(add [kb ko]
+            (+ (kb box) (/ (ko box) 2)))]
+    [(add :left :width) (add :top :height)]))
+
 (defn build-box
   [id top left]
   {:id id 
@@ -62,12 +67,11 @@
   [pos state]
   (let [drag-target? (partial in-box? pos)]
     (-> state
-      (update-in [:boxes] #(mapv locate-box %))
-      (update-in [:boxes] (fn [boxes]
-                            (mapv #(if (drag-target? %)
-                                     (start-dragging-box-from-pos pos %)
-                                     %)
-                              boxes)))
+      (update-in [:boxes]
+        (fn [boxes]
+          (->> (map locate-box boxes)
+            (mapv #(cond->> %
+                     (drag-target? %) (start-dragging-box-from-pos pos))))))
       (assoc :drag {:start-pos pos}))))
 
 (defn drag
@@ -86,11 +90,14 @@
             (dissoc box :drag-offset :top :left))]
     (update-in state [:boxes] (partial into [] (map drop-box)))))
 
-
-
 (defn stop-drag
   [state]
-  (-> state (drop-boxes) (assoc :drag nil)))
+  (-> state
+    (update-in [:boxes] #(->> (map locate-box %)
+                           (sort-by (comp second box-center))
+                           vec ))
+    drop-boxes
+    (assoc :drag nil)))
 
 (defrecord NoOp [] IFn (-invoke [_ state] state))
 (defrecord Click [pos] IFn (-invoke [_ state] (click pos state)))
