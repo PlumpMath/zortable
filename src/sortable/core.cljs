@@ -1,30 +1,30 @@
 (ns ^:figwheel-always sortable.core
     (:require [om.core :as om :include-macros true]
               [om.dom :as dom :include-macros true]
+              [goog.style :as style]
               [jamesmacaulay.zelkova.signal :as z]
               [jamesmacaulay.zelkova.mouse :as mouse]))
 
 (enable-console-print!)
 
-(def init-state {:boxes []
-                 :drag nil})
-
 (defn pos->hue
   [[x y]]
   (mod (+ (/ x 2) (/ y 2)) 360))
 
+(def box-width 100)
+(def box-height 100)
+
 (defn build-box
-  [[x1 y1] [x2 y2]]
-  (let [[top bottom] (sort [y1 y2])
-        [left right] (sort [x1 x2])
-        centre [(/ (+ left right) 2)
-                (/ (+ top bottom) 2)]]
-    {:top top
-     :left left
-     :width (- right left)
-     :height (- bottom top)
-     :hue (pos->hue centre)
-     :resizing? true}))
+  [id top left]
+  {:id id 
+   :top top
+   :left left
+   :width box-width
+   :height box-height 
+   :hue (pos->hue [top left])})
+
+(def init-state {:boxes (mapv #(build-box % (* % box-height) 0) (range 5))
+                 :drag nil})
 
 (defn in-box?
   [[x y]
@@ -36,10 +36,6 @@
   [box]
   (contains? box :drag-offset))
 
-(defn resizing?
-  [box]
-  (:resizing? box))
-
 (defn click
   [pos state]
   (let [without-clicked (remove (partial in-box? pos))]
@@ -49,41 +45,48 @@
   [{:keys [left top]}]
   [left top])
 
+(defn locate-box [box]
+  (let [node (.getElementById js/document (:id box))
+        final-pos (style/getPageOffset node)
+        left (.-x final-pos)
+        top (.-y final-pos)]
+    (assoc box :left left :top top)))
+
 (defn start-dragging-box-from-pos
   [pos box]
-  (let [offset (->> box (topleft-pos) (map - pos))]
+  (let [offset (->> box topleft-pos (map - pos))]
     (assoc box :drag-offset offset)))
 
 (defn start-drag
+  "Identifies the boxes to be dragged (or build) and returns the updated state"
   [pos state]
-  (let [drag-target? (partial in-box? pos)
-        {targets true non-targets false} (->> state :boxes (group-by drag-target?))
-        boxes' (into [] (concat non-targets
-                                (map (partial start-dragging-box-from-pos pos) targets)
-                                (when (empty? targets) [(build-box pos pos)])))]
-    (assoc state
-      :boxes boxes'
-      :drag {:start-pos pos})))
+  (let [drag-target? (partial in-box? pos)]
+    (-> state
+      (update-in [:boxes] #(mapv locate-box %))
+      (update-in [:boxes] (fn [boxes]
+                            (mapv #(if (drag-target? %)
+                                     (start-dragging-box-from-pos pos %)
+                                     %)
+                              boxes)))
+      (assoc :drag {:start-pos pos}))))
 
 (defn drag
+  "Updates the state by interpreting what the new position means for each box."
   [pos state]
-  (let [box-category #(cond (moving? %) :moving
-                            (resizing? %) :resizing
-                            :else :placed)
-        {:keys [placed moving resizing]} (group-by box-category (:boxes state))
-        drag-to-pos (fn [box]
-                      (let [[left top] (map - pos (:drag-offset box))]
-                        (assoc box :left left :top top)))
-        boxes' (into [] (concat placed
-                                (map drag-to-pos moving)
-                                (map (fn [_] (build-box pos (-> state :drag :start-pos)))
-                                     resizing)))]
-    (assoc state :boxes boxes')))
+  (letfn [(drag-to-pos [box]
+            (let [[left top] (map - pos (:drag-offset box))]
+              (assoc box :left left :top top)))]
+    (update-in state [:boxes]
+      (fn [boxes]
+        (mapv #(if (moving? %) (drag-to-pos %) %) boxes)))))
 
 (defn drop-boxes
   [state]
-  (let [drop-box (fn [box] (dissoc box :drag-offset :resizing?))]
+  (letfn [(drop-box [box]
+            (dissoc box :drag-offset :top :left))]
     (update-in state [:boxes] (partial into [] (map drop-box)))))
+
+
 
 (defn stop-drag
   [state]
@@ -105,7 +108,9 @@
                        (z/drop-repeats))
         dragstarts (z/keep-if identity true dragging?)
         dragstops (z/keep-if not false dragging?)
-        click-positions (->> mouse/position (z/sample-on mouse/clicks) (z/drop-when dragging? [0 0]))
+        click-positions (->> mouse/position
+                          (z/sample-on mouse/clicks)
+                          (z/drop-when dragging? [0 0]))
         actions (z/merge (z/constant (->NoOp))
                          (z/map ->StartDrag (z/sample-on dragstarts mouse/position))
                          (z/map (constantly (->StopDrag)) dragstops)
@@ -117,23 +122,27 @@
              init-state
              actions)))
 
-(def app-state (z/pipe-to-atom state-signal))
+(defonce app-state (z/pipe-to-atom state-signal))
 
 (defn box-color
   [box]
-  (let [opacity (if (or (moving? box) (resizing? box)) 0.5 1)]
+  (let [opacity (if (moving? box)  0.5 1)]
     (str "hsla(" (:hue box) ",50%,50%," opacity ")")))
 
 (defn render-box
   [box]
   (when box
-    (dom/div #js {:style #js {:backgroundColor (box-color box)
-                              :position "absolute"
-                              :top (:top box)
-                              :left (:left box)
-                              :width (:width box)
-                              :height (:height box)}}
-             nil)))
+    (dom/div
+      #js {:id (:id box)
+           :class "sortable-container"
+           :style (clj->js (cond-> {:backgroundColor (box-color box)
+                                    :position "relative"
+                                    :width (:width box)
+                                    :height (:height box)}
+                             (moving? box) (merge {:position "absolute"
+                                                   :top (:top box)
+                                                   :left (:left box)})))}
+      (:id box))))
 
 (defn render-state
   [state]
