@@ -163,17 +163,36 @@
     om/IDisplayName (display-name [_] "SortWrapper")
     om/IRender
     (render [_]
-      (println box)
       (dom/div #js {:id (:id box)
-                    :class "sortable-container"
-                    :style                    
-                    (clj->js (cond-> {:position "relative"}
-                               (moving? box) (merge {:position "absolute"
-                                                     :top (:top box)
-                                                     :left (:left box)})))}
-        (om/build (:box-view opts) box)))))
+                    :class (cond 
+                             (moving? box) "sortable-container"
+                             (filler-box? box) "sortable-filler")
+                    :style (if (moving? box)
+                             #js {:position "absolute"
+                                  :top (:top box)
+                                  :left (:left box)}
+                             #js {:position "relative"})}
+        (if (filler-box? box)
+          (om/build (:box-filler opts) box)
+          (om/build (:box-view opts) box))))))
+
+(defn sortable [boxes owner opts]
+  (reify
+    om/IDisplayName (display-name [_] "Sortable")
+    om/IRender
+    (render [_]
+      (apply dom/div {:class "sort-list"} 
+        (om/build-all sort-wrapper boxes {:opts opts})))))
 
 ;; Example
+
+(defn render-filler [box owner]
+  (reify
+    om/IDisplayName (display-name [_] "Filler")
+    om/IRender
+    (render [_]
+      (dom/div nil 
+        "Filler Box"))))
 
 (defn render-box [box owner]
   (reify
@@ -194,8 +213,9 @@
                             :-moz-user-select "none"
                             :-ms-user-select "none"
                             :user-select "none"}}
-    (apply dom/div nil
-      (om/build-all sort-wrapper (:boxes state) {:opts {:box-view render-box}}))
+    (om/build sortable (:boxes state)
+      {:opts {:box-view render-box
+              :box-filler render-filler}}) 
     (dom/div #js {:style #js {:position "relative"}}
       (dom/h1 nil "Drag and drop")
       (dom/pre nil (.stringify js/JSON (clj->js state) nil 2)))))
