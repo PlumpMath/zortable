@@ -34,16 +34,17 @@
       (dom/div nil 
         "Filler Box"))))
 
+(def drag-class "drag-item")
+
 (defn render-item [item owner]
   (reify
     om/IDisplayName (display-name [_] "Box")
     om/IRender
     (render [_]
       (when item 
-        (dom/div #js {:style #js {:backgroundColor (box-color item)
-                                  :width (:width item)
-                                  :height (:height item)}}
-          (:item-id item))))))
+        (dom/div #js {:style #js {:backgroundColor (box-color item)}}
+          (dom/h3 #js {:class drag-class} "O")
+          (dom/p nil (:item-id item)))))))
 
 (defn render-state
   [state]
@@ -59,6 +60,7 @@
       (om/build zortable (:boxes state)
         {:opts {:box-view render-item
                 :id-key :item-id
+                :drag-class drag-class 
                 :box-filler render-filler}}))))
 
 (om/root

@@ -147,6 +147,7 @@
       (dom/div #js {:id (::id box)
                     :class "sortable-draggable"
                     :style #js {:position "absolute"
+                                :z-index 1
                                 :top (:top box)
                                 :left (:left box)}}
         (om/build (:box-view opts) item)))))
