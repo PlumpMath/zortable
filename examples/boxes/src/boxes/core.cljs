@@ -5,23 +5,21 @@
 
 (enable-console-print!)
 
-;; Example
-
-(defn pos->hue
-  [[x y]]
+(defn pos->hue [[x y]]
   (mod (+ (/ x 2) (/ y 2)) 360))
 
 (def box-width 50)
 (def box-height 20)
 
-(defn build-box
-  [id]
+(defn build-box [id]
   {:item-id id 
    :width box-width
    :height (+ box-height (* 10 id)) 
    :hue (pos->hue [(rand-int 500) (rand-int 500)])})
 
-(defonce app-state (atom {:boxes (mapv build-box (range 5))}))
+(defonce app-state
+  (atom {:boxes (mapv (comp (partial hash-map :card-id (str (gensym)) :items) vec)
+                  (partition 5 (mapv build-box (range 15))))}))
 
 (defn box-color
   [box]
@@ -33,10 +31,14 @@
     om/IDisplayName (display-name [_] "Filler")
     om/IRender
     (render [_]
-      (dom/div nil 
-        "Filler Box"))))
+      (dom/div nil
+        (dom/br nil)
+        (dom/br nil)))))
 
 (def drag-class "drag-item")
+
+(defn drag-icon []
+  (dom/span #js {:className drag-class} "\u22EE"))
 
 (defn render-item [item owner]
   (reify
@@ -44,33 +46,44 @@
     om/IRender
     (render [_]
       (when item 
-        (dom/div #js {:style #js {:backgroundColor (box-color item)}}
-          (dom/h3 #js {:className drag-class} "O")
-          (dom/p nil (:item-id item)))))))
+        (dom/div #js {:style #js {:backgroundColor (box-color item)
+                                  :height (:height item)
+                                  :width 100}}
+          (drag-icon)
+          (:item-id item))))))
 
-(defn render-state
-  [state]
-  (dom/div #js {:style #js {:-webkit-touch-callout "none"
-                            :-webkit-user-select "none"
-                            :-khtml-user-select "none"
-                            :-moz-user-select "none"
-                            :-ms-user-select "none"
-                            :user-select "none"}}
-    (dom/div #js {:style #js {:position "relative"}}
-      (dom/h1 nil "Sortable")
-      (dom/p nil (pr-str (map :item-id (:boxes state))))
-      (om/build zortable (:boxes state)
-        {:opts {:box-view render-item
-                :id-key :item-id
-                :drag-class drag-class 
-                :box-filler render-filler}}))))
+(defn card [{:keys [items card-id]} owner]
+  (reify
+    om/IRender
+    (render [_]
+      (dom/div #js {:id card-id :style #js {:position "relative"}}
+        (drag-icon)
+        (pr-str (map :item-id items))
+        (om/build zortable items 
+          {:opts {:box-view render-item
+                  :id-key :item-id
+                  :drag-class drag-class 
+                  :box-filler render-filler}})))))
 
-(om/root
-  (fn [app owner]
-    (reify om/IRender
-      (render [_]
-        (render-state app))))
-  app-state
+(defn render-state [state owner]
+  (reify
+    om/IRender
+    (render [_]
+      (dom/div #js {:style #js {:-webkit-touch-callout "none"
+                                :-webkit-user-select "none"
+                                :-khtml-user-select "none"
+                                :-moz-user-select "none"
+                                :-ms-user-select "none"
+                                :user-select "none"}}
+        (dom/div nil 
+          (dom/h1 nil "Sortable")
+          (om/build zortable (:boxes state)
+            {:opts {:box-view card
+                    :id-key :card-id
+                    :drag-class drag-class
+                    :box-filler render-filler}}))))))
+
+(om/root render-state app-state
   {:target (. js/document (getElementById "app"))})
 
 (defn on-js-reload []

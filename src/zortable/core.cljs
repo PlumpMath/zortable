@@ -246,7 +246,6 @@
     om/IRenderState
     (render-state [_ {:keys [boxes]}]
       (apply dom/div {:className "sort-list"} 
-        (dom/pre nil (.stringify js/JSON (clj->js boxes) nil 2))
         (if-let [draggable (first (filter moving? boxes))]
           (om/build sort-draggable
             [draggable (find-by-key (:id-key opts) (::key draggable) items)]
