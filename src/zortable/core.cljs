@@ -4,10 +4,22 @@
             [om.core :as om :include-macros true]
             [om.dom :as dom :include-macros true]
             [goog.style :as style]
+            [goog.dom.classes :as classes]
+            [goog.events :as events]
             [jamesmacaulay.zelkova.signal :as z]
             [jamesmacaulay.zelkova.mouse :as mouse]))
 
-(enable-console-print!)
+(defn- listen [el type & args]
+  (let [out (apply async/chan 1 args)]
+    (events/listen el type (fn [e] (async/put! out e)))
+    out))
+
+(defn- target-channel [graph opts]
+  (listen js/document "mousemove"
+    (map (fn [e] (.. e -target)))))
+
+(def mouse-target 
+  (z/input #js {} ::target target-channel))
 
 (defn ensure-attrs [k f]
   (fn [box]
@@ -68,10 +80,22 @@
   (let [offset (->> box topleft-pos (map - pos))]
     (assoc box :drag-offset offset)))
 
+(defn find-drag-id [drag-class node]
+  (some-> (if (classes/has node drag-class)
+            node 
+            (.closest node (str "." drag-class)))
+    (.closest ".sortable-container")
+    .-id))
+
 (defn start-drag
   "Identifies the boxes to be dragged (or build) and returns the updated state"
-  [pos state]
-  (let [drag-target? (partial in-box? pos)]
+  [drag-class pos et state]
+  (let [drag-target?
+        (if (nil? drag-class)
+          (partial in-box? pos)
+          (if-let [id (find-drag-id drag-class et)]
+            #(= (::id %) id)
+            (fn [_] false)))]
     (-> state
       (update-in [:boxes]
         (fn [boxes]
@@ -97,29 +121,28 @@
           (map #(if (moving? %) (drag-to-pos %) %))
           sort-by-pos)))))
 
-(defn drop-boxes
-  [state]
+(defn drop-boxes [state]
   (letfn [(drop-box [box]
             (dissoc box :drag-offset))]
     (update-in state [:boxes] (partial mapv drop-box))))
 
-(defn stop-drag
-  [state]
+(defn stop-drag [state]
   (-> state
     drop-boxes
     (assoc :drag nil)))
 
 (defrecord NoOp [] IFn (-invoke [_ state] state))
-(defrecord StartDrag [pos] IFn (-invoke [_ state] (start-drag pos state)))
+(defrecord StartDrag [drag-class pos et]
+  IFn (-invoke [_ state]
+        (start-drag drag-class pos et state)))
 (defrecord Drag [pos] IFn (-invoke [_ state] (drag pos state)))
 (defrecord StopDrag [ch]
-  IFn
-  (-invoke [_ state]
-    (let [state' (stop-drag state)]
-      (go (>! ch [::stop state']))
-      state')))
+  IFn (-invoke [_ state]
+        (let [state' (stop-drag state)]
+          (go (>! ch [::stop state']))
+          state')))
 
-(defn state-signal [stop-ch init-state]
+(defn state-signal [stop-ch drag-class init-state]
   (let [dragging-positions (z/keep-when mouse/down?
                              [0 0]
                              mouse/position)
@@ -130,7 +153,9 @@
         dragstarts (z/keep-if identity true dragging?)
         dragstops (z/keep-if not false dragging?)
         actions (z/merge (z/constant (->NoOp))
-                  (z/map ->StartDrag (z/sample-on dragstarts mouse/position))
+                  (z/map (partial ->StartDrag drag-class)
+                    (z/sample-on dragstarts mouse/position)
+                    (z/sample-on dragstarts mouse-target))
                   (z/map (constantly (->StopDrag stop-ch)) dragstops)
                   (z/map ->Drag dragging-positions))]
     (z/foldp (fn [action state]
@@ -145,9 +170,9 @@
     om/IRender
     (render [_]
       (dom/div #js {:id (::id box)
-                    :class "sortable-draggable"
+                    :className "sortable-draggable"
                     :style #js {:position "absolute"
-                                :z-index 1
+                                :zIndex 1
                                 :top (:top box)
                                 :left (:left box)}}
         (om/build (:box-view opts) item)))))
@@ -158,7 +183,7 @@
     om/IRender
     (render [_]
       (dom/div #js {:id "filler-box"
-                    :class "sortable-filler"
+                    :className "sortable-filler"
                     :style #js {:position "relative"}}
         (om/build (:box-filler opts) item)))))
 
@@ -168,7 +193,7 @@
     om/IRender
     (render [_]
       (dom/div #js {:id (::id box)
-                    :class "sortable-container"
+                    :className "sortable-container"
                     :style #js {:position "relative"}}
         (om/build (:box-view opts) item)))))
 
@@ -180,7 +205,7 @@
     om/IDisplayName (display-name [_] "Sortable")
     om/IInitState
     (init-state [_]
-      (let [boxes (mapv #(hash-map ::id (gensym)
+      (let [boxes (mapv #(hash-map ::id (str (gensym))
                            ::key (get % (:id-key opts)))
                     items)]
         {:boxes boxes 
@@ -202,7 +227,7 @@
       (let [boxes (mapv (comp add-pos add-node)
                     (om/get-state owner :boxes))
             state-ref (-> (om/get-state owner :stop-ch)
-                        (state-signal {:boxes boxes})
+                        (state-signal (:drag-class opts) {:boxes boxes})
                         z/pipe-to-atom )]
         (add-watch state-ref ::sortable
           (fn [_ _ _ nv]
@@ -214,7 +239,7 @@
       (remove-watch (om/get-state owner :state-ref) ::sortable))
     om/IRenderState
     (render-state [_ {:keys [boxes]}]
-      (apply dom/div {:class "sort-list"} 
+      (apply dom/div {:className "sort-list"} 
         (dom/pre nil (.stringify js/JSON (clj->js boxes) nil 2))
         (if-let [draggable (first (filter moving? boxes))]
           (om/build sort-draggable

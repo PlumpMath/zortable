@@ -3,6 +3,8 @@
               [om.dom :as dom :include-macros true]
               [zortable.core :refer [zortable]]))
 
+(enable-console-print!)
+
 ;; Example
 
 (defn pos->hue
@@ -43,7 +45,7 @@
     (render [_]
       (when item 
         (dom/div #js {:style #js {:backgroundColor (box-color item)}}
-          (dom/h3 #js {:class drag-class} "O")
+          (dom/h3 #js {:className drag-class} "O")
           (dom/p nil (:item-id item)))))))
 
 (defn render-state

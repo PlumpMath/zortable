@@ -1,6 +1,6 @@
 (defproject zortable "0.1.0-SNAPSHOT"
   :description "Reusable sortable om component using Zelkova"
-  :url "http://example.com/FIXME"
+  :url "https://github.com/bensu/zortable"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
 
