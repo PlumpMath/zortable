@@ -200,6 +200,9 @@
 (defn find-by-key [k v coll]
   (first (filter #(= v (get % k)) coll)))
 
+(defn closed? [ch]
+  (.-closed ch))
+
 (defn zortable [items owner opts]
   (reify
     om/IDisplayName (display-name [_] "Sortable")
@@ -210,17 +213,19 @@
                     items)]
         {:boxes boxes 
          :stop-ch (chan)
+         :exit-ch (chan)
          :drag nil}))
     om/IWillMount
     (will-mount [_]
       (go-loop []
-        (let [[tag state] (<! (om/get-state owner :stop-ch))]
-          (case tag
-            ::stop 
-            (om/transact! items
-              #(mapv (fn [box]
-                       (find-by-key (:id-key opts) (::key box) %))
-                 (:boxes state)))))
+        (when-not (closed? (om/get-state owner :exit-ch))
+          (let [[tag state] (<! (om/get-state owner :stop-ch))]
+            (case tag
+              ::stop 
+              (om/transact! items
+                #(mapv (fn [box]
+                         (find-by-key (:id-key opts) (::key box) %))
+                   (:boxes state))))))
         (recur)))
     om/IDidMount
     (did-mount [_]
@@ -236,6 +241,7 @@
         (om/set-state! owner :boxes boxes)))
     om/IWillUnmount
     (will-unmount [_]
+      (async/close! (om/get-state owner :exit-ch))
       (remove-watch (om/get-state owner :state-ref) ::sortable))
     om/IRenderState
     (render-state [_ {:keys [boxes]}]
