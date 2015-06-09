@@ -1,4 +1,5 @@
 (ns zortable.core
+  (:import [goog.ui IdGenerator])
   (:require-macros [cljs.core.async.macros :refer [go go-loop]])
   (:require [cljs.core.async :as async :refer [>! <! chan]]
             [om.core :as om :include-macros true]
@@ -9,74 +10,54 @@
             [jamesmacaulay.zelkova.signal :as z]
             [jamesmacaulay.zelkova.impl.signal :as zimpl]
             [jamesmacaulay.zelkova.mouse :as mouse]))
+;; ======================================================================
+;; Util
 
-(defn- listen [el type & args]
-  (let [out (apply async/chan 1 args)]
+(defn guid []
+  (.getNextUniqueId (.getInstance IdGenerator)))
+
+;; ====================================================================== 
+;; Custom Stream
+
+(defn- listen [el type & xforms]
+  (let [out (apply async/chan 1 xforms)]
     (events/listen el type (fn [e] (async/put! out e)))
     out))
 
-(defn- target-channel [graph opts]
-  (listen js/document "mousemove"
-    (map (fn [e] (.. e -target)))))
+(defn- mouse-target-ch [graph opts]
+  (listen js/document "mousemove" (map (fn [e] (.. e -target)))))
 
 (def mouse-target 
-  (z/input #js {} ::target target-channel))
+  (z/input #js {} ::mouse-target mouse-target-ch))
 
-(defn ensure-attrs [k f]
-  (fn [box]
-    (if (nil? (k box))
-      (f box)
-      box)))
+;; ======================================================================  
+;; Box
 
 (defn add-node [box]
-  {:pre [(some? (::id box))]}
-  (assoc box :node (.getElementById js/document (::id box))))
-
-(def ensure-node (ensure-attrs :node add-node))
+  {:pre [(some? (:eid box))]}
+  (assoc box :node (.getElementById js/document (:eid box))))
 
 (defn add-size [box]
-  (let [box' (ensure-node box)
-        n (aget (.-childNodes (:node box')) 0) 
+  (let [n (aget (.-childNodes (:node box)) 0) 
         size (style/getSize n)]
-    (assoc box' :width (.-width size) :height (.-height size))))
-
-(def ensure-size (ensure-attrs :width add-size))
+    (assoc box :width (.-width size) :height (.-height size))))
 
 (defn add-pos [box]
-  (let [box' (ensure-node box)
-        final-pos (style/getPageOffset (:node box'))
+  (let [final-pos (style/getPageOffset (:node box))
         left (.-x final-pos)
         top (.-y final-pos)]
-    (assoc box' :left left :top top)))
-
-(def ensure-pos (ensure-attrs :left add-pos))
+    (assoc box :left left :top top)))
 
 (defn box-center [box]
-  (let [box' (ensure-pos (ensure-size box))]
-    (letfn [(add [kb ks]
-              (+ (kb box') (/ (ks box') 2)))]
-      [(add :left :width) (add :top :height)])))
-
-(defn filler-box? [box]
-  (= "filler-box" (::id box)))
-
-(defn filler-box []
-  {::id "filler-box"})
-
-(defn in-box? [[x y] box]
-  (let [{:keys [top left width height]} (ensure-pos (ensure-size box))]
-    (and (< left x (+ left width))
-      (< top y (+ top height)))))
-
-(defn moving? [box]
-  (contains? box :drag-offset))
+  (letfn [(add [kb ks]
+            (+ (kb box) (/ (ks box) 2)))]
+    [(add :left :width) (add :top :height)]))
 
 (defn topleft-pos [{:keys [left top]}]
   [left top])
 
-(defn start-dragging-box-from-pos [pos box]
-  (let [offset (->> box topleft-pos (map - pos))]
-    (assoc box :drag-offset offset)))
+(defn box-offset [pos box]
+  (->> box topleft-pos (mapv - pos)))
 
 (defn find-drag-id [drag-class node]
   (some-> (if (classes/has node drag-class)
@@ -85,65 +66,92 @@
     (.closest ".sortable-container")
     .-id))
 
+(defn eid->box [id]
+  (add-size (add-pos (add-node {:eid id}))))
+
+(defn eid->id [id->eid ele-id]
+  (some (fn [[id eid]] (if (= ele-id eid) id)) id->eid))
+
+(defn sort-by-pos [id->eid ids]
+  (vec (sort-by (comp second box-center eid->box id->eid) ids)))
+
+;; ====================================================================== 
+;; Drag Events
+
+(defn dragging? [state]
+  (not (empty? (:box state))))
+
 (defn start-drag
   "Identifies the boxes to be dragged (or build) and returns the updated state"
   [drag-class pos et state]
-  (let [drag-target?
-        (if (nil? drag-class)
-          (partial in-box? pos)
-          (if-let [id (find-drag-id drag-class et)]
-            #(= (::id %) id)
-            (fn [_] false)))]
-    (-> state
-      (update-in [:boxes]
-        (fn [boxes]
-          (->> (map (comp add-size add-pos add-node) boxes)
-            (mapv #(if (drag-target? %)
-                     (start-dragging-box-from-pos pos %)
-                     %)))))
-      (assoc :drag {:start-pos pos}))))
-
-(defn sort-by-pos [boxes]
-  (vec (sort-by (comp second box-center add-size add-pos add-node) boxes)))
+  (let [eid (find-drag-id drag-class et)]
+    (if (or (nil? eid) (not (contains? (set (vals (:id->eid state))) eid)))
+      state
+      (let [box (eid->box eid)]
+        (println "offset"  (box-offset pos box))
+        (println "startbox" box)
+        (assoc state
+          :start-pos pos
+          :box (assoc box
+                 :eid eid
+                 :id (eid->id (:id->eid state) eid) 
+                 :offset (box-offset pos box)))))))
 
 (defn drag
   "Updates the state by interpreting what the new position means for each box."
   [pos state]
   (letfn [(drag-to-pos [box]
-            (let [[left top] (map - pos (:drag-offset box))]
+            (let [[left top] (map - pos (:offset box))]
               (assoc box :left left :top top)))]
-    (update-in state [:boxes]
-      (fn [boxes]
-        (->> boxes 
-          (map (comp add-pos add-node))
-          (map #(if (moving? %) (drag-to-pos %) %))
-          sort-by-pos)))))
-
-(defn drop-boxes [state]
-  (letfn [(drop-box [box]
-            (dissoc box :drag-offset))]
-    (update-in state [:boxes] (partial mapv drop-box))))
+    (println (drag-to-pos (:box state)))
+    (-> state
+      (update :box drag-to-pos)
+      (update :ids (partial sort-by-pos (:id->eid state))))))
 
 (defn stop-drag [state]
   (-> state
-    drop-boxes
-    (assoc :drag nil)))
+    (update :ids (partial sort-by-pos (:id->eid state)))
+    (assoc :box {})
+    (assoc :start-pos [])))
+
+;; ====================================================================== 
+;; Unique dragger
+
+(defonce current-dragger (atom nil))
+
+;; ====================================================================== 
+;; Side Effects from Event Handlers
 
 (defrecord NoOp [] IFn (-invoke [_ state] state))
-(defrecord StartDrag [drag-class pos et]
-  IFn (-invoke [_ state]
-        (start-drag drag-class pos et state)))
-(defrecord Drag [pos] IFn (-invoke [_ state] (drag pos state)))
-(defrecord StopDrag [ch]
-  IFn (-invoke [_ state]
-        (let [state' (stop-drag state)]
-          (go (>! ch [::stop state']))
-          state')))
 
-(defn state-signal [stop-ch drag-class init-state]
-  (let [dragging-positions (z/keep-when mouse/down?
-                             [0 0]
-                             mouse/position)
+(defrecord StartDrag [zid drag-class pos et]
+  IFn (-invoke [_ state]
+        (let [state' (start-drag drag-class pos et state)]
+          (if (and (dragging? state') (nil? @current-dragger))
+            (do (reset! current-dragger zid)
+                state')
+            state'))))
+
+(defrecord Drag [zid pos]
+  IFn (-invoke [_ state]
+        (if (= zid @current-dragger) 
+          (drag pos state)
+          state)))
+
+(defrecord StopDrag [zid ch]
+  IFn (-invoke [_ state]
+        (if (= zid @current-dragger) 
+          (let [state' (stop-drag state)]
+            (reset! current-dragger nil)
+            (go (>! ch [::stop state']))
+            state')
+          state)))
+
+;; ====================================================================== 
+;; Zelkova Piping
+
+(defn state-signal [stop-ch zid drag-class init-state]
+  (let [dragging-positions (z/keep-when mouse/down? [0 0] mouse/position)
         dragging? (->> (z/constant true)
                     (z/sample-on dragging-positions)
                     (z/merge (z/keep-if not false mouse/down?))
@@ -151,50 +159,14 @@
         dragstarts (z/keep-if identity true dragging?)
         dragstops (z/keep-if not false dragging?)
         actions (z/merge (z/constant (->NoOp))
-                  (z/map (partial ->StartDrag drag-class)
+                  (z/map (partial ->StartDrag zid drag-class)
                     (z/sample-on dragstarts mouse/position)
                     (z/sample-on dragstarts mouse-target))
-                  (z/map (constantly (->StopDrag stop-ch)) dragstops)
-                  (z/map ->Drag dragging-positions))]
+                  (z/map (constantly (->StopDrag zid stop-ch)) dragstops)
+                  (z/map (partial ->Drag zid) dragging-positions))]
     (z/foldp (fn [action state] (action state))
       init-state
       actions)))
-
-(defn sort-draggable [[box item] owner opts]
-  (reify
-    om/IDisplayName (display-name [_] "SortDraggable")
-    om/IRender
-    (render [_]
-      (dom/div #js {:id (::id box)
-                    :className "sortable-draggable"
-                    :style #js {:position "absolute"
-                                :zIndex 1
-                                :top (:top box)
-                                :left (:left box)}}
-        (om/build (:box-view opts) item)))))
-
-(defn sort-filler [[box item] owner opts]
-  (reify
-    om/IDisplayName (display-name [_] "SortFiller")
-    om/IRender
-    (render [_]
-      (dom/div #js {:id "filler-box"
-                    :className "sortable-filler"
-                    :style #js {:position "relative"}}
-        (om/build (:box-filler opts) item)))))
-
-(defn sort-wrapper [[box item] owner opts]
-  (reify
-    om/IDisplayName (display-name [_] "SortWrapper")
-    om/IRender
-    (render [_]
-      (dom/div #js {:id (::id box)
-                    :className "sortable-container"
-                    :style #js {:position "relative"}}
-        (om/build (:box-view opts) item)))))
-
-(defn find-by-key [k v coll]
-  (first (filter #(= v (get % k)) coll)))
 
 (defn pipe-to-atom
   "Adds live-graph to the return value of the original z/pipe-to-atom"
@@ -205,60 +177,95 @@
          :meta {::source live-graph}))
      live-graph]))
 
-(defn zortable [items owner opts]
+;; ====================================================================== 
+;; Wrapper Components
+
+(defn sort-draggable [{:keys [box item]} owner opts]
+  (reify
+    om/IDisplayName (display-name [_] "SortDraggable")
+    om/IRender
+    (render [_]
+      (dom/div #js {:id (:eid box)
+                    :className "sortable-draggable"
+                    :style #js {:position "absolute"
+                                :zIndex 1
+                                :top (:top box)
+                                :left (:left box)}}
+        (om/build (:box-view opts) item {:react-key (:id box)})))))
+
+(defn sort-filler [item owner opts]
+  (reify
+    om/IDisplayName (display-name [_] "SortFiller")
+    om/IRender
+    (render [_]
+      (dom/div #js {:className "sortable-filler"}
+        (om/build (:box-filler opts) item)))))
+
+(defn sort-wrapper [item owner opts]
+  (reify
+    om/IDisplayName (display-name [_] "SortWrapper")
+    om/IRenderState
+    (render-state [_ {:keys [eid id]}]
+      (dom/div #js {:id eid 
+                    :className "sortable-container"}
+        (om/build (:box-view opts) item {:react-key id})))))
+
+(defn zortable [{:keys [sort items]} owner opts]
   (reify
     om/IDisplayName (display-name [_] "Zortable")
     om/IInitState
     (init-state [_]
-      (let [boxes (mapv #(hash-map ::id (str (gensym))
-                           ::key (get % (:id-key opts)))
-                    items)]
-        {:boxes boxes 
-         :stop-ch (chan)
-         :drag nil}))
+      ;; State present during the whole lifecycle
+      {:zid (guid) ;; Unique to each loaded zortable
+       :stop-ch (chan)
+       :ids @sort
+       :id->eid (zipmap @sort (mapv (fn [_] (guid)) @sort))
+       ;; State present during drag
+       :start-pos []
+       :box {}})
     om/IWillMount
     (will-mount [_]
-      (go-loop []
-        (when (om/mounted? owner)
+      (letfn [(reset-drag-state! []
+                (om/set-state! owner :box {})
+                (om/set-state! owner :start-pos []))]
+        (go-loop []
           (let [[tag state] (<! (om/get-state owner :stop-ch))]
-            (case tag
-              ::stop (om/transact! items
-                       #(mapv (fn [box]
-                                (find-by-key (:id-key opts) (::key box) %))
-                          (:boxes state))))))
-        (recur)))
+            (when (= tag ::stop)
+              (om/update! sort (:ids state))
+              (reset-drag-state!)
+              (recur))))))
     om/IDidMount
     (did-mount [_]
-      (let [boxes (mapv (comp add-pos add-node) (om/get-state owner :boxes))
-            signal (state-signal (om/get-state owner :stop-ch)
-                     (:drag-class opts) {:boxes boxes})
+      (let [signal (state-signal (om/get-state owner :stop-ch)
+                     (om/get-state owner :zid)
+                     (:drag-class opts)
+                     (dissoc (om/get-state owner) :stop-ch :zid))
             [state-ref live-graph] (pipe-to-atom signal)]
         (add-watch state-ref ::sortable
           (fn [_ _ _ nv]
             (om/update-state! owner #(merge % nv))))
         (om/set-state! owner :live-graph live-graph)
-        (om/set-state! owner :state-ref state-ref)
-        (om/set-state! owner :boxes boxes)))
+        (om/set-state! owner :state-ref state-ref)))
     om/IWillUnmount
     (will-unmount [_]
       (async/close! (om/get-state owner :live-graph))
-      ;; Just in case.
+      (async/close! (om/get-state owner :stop-ch))
       (remove-watch (om/get-state owner :state-ref) ::sortable))
     om/IRenderState
-    (render-state [_ {:keys [boxes]}]
-      (apply dom/div {:className "zort-list"} 
-        (if-let [draggable (first (filter moving? boxes))]
-          (om/build sort-draggable
-            [draggable (find-by-key (:id-key opts) (::key draggable) items)]
-            {:opts opts}))
-        (->> (map ensure-node boxes)
-          (map-indexed vector)
-          (sort-by (fn [[index box]]
-                     (if (nil? (:node box))
-                       index
-                       (second (box-center box)))))
-          (map (fn [[_ box]]
-                 (let [item (find-by-key (:id-key opts) (::key box) items)]
-                   (if (moving? box)
-                     (om/build sort-filler [box item] {:opts opts})
-                     (om/build sort-wrapper [box item] {:opts opts}))))))))))
+    (render-state [_ {:keys [ids id->eid zid box]}]
+      (let [moving-id (:id box)]
+        (apply dom/div #js {:id zid :className "zort-list"} 
+          (when-not (empty? box)
+            (om/build sort-draggable
+              {:box box 
+               :item (items moving-id)}
+              {:opts opts :react-key moving-id}))
+          (map (fn [item-id]
+                 (let [eid (id->eid item-id)
+                       item (items item-id)]
+                   (if (= item-id moving-id) 
+                     (om/build sort-filler item {:opts opts})
+                     (om/build sort-wrapper item
+                       {:opts opts :init-state {:eid eid :id item-id}
+                        :react-key item-id}))))
+            ids))))))
