@@ -7,6 +7,7 @@
             [goog.dom.classes :as classes]
             [goog.events :as events]
             [jamesmacaulay.zelkova.signal :as z]
+            [jamesmacaulay.zelkova.impl.signal :as zimpl]
             [jamesmacaulay.zelkova.mouse :as mouse]))
 
 (defn- listen [el type & args]
@@ -67,16 +68,13 @@
     (and (< left x (+ left width))
       (< top y (+ top height)))))
 
-(defn moving?
-  [box]
+(defn moving? [box]
   (contains? box :drag-offset))
 
-(defn topleft-pos
-  [{:keys [left top]}]
+(defn topleft-pos [{:keys [left top]}]
   [left top])
 
-(defn start-dragging-box-from-pos
-  [pos box]
+(defn start-dragging-box-from-pos [pos box]
   (let [offset (->> box topleft-pos (map - pos))]
     (assoc box :drag-offset offset)))
 
@@ -158,9 +156,7 @@
                     (z/sample-on dragstarts mouse-target))
                   (z/map (constantly (->StopDrag stop-ch)) dragstops)
                   (z/map ->Drag dragging-positions))]
-    (z/foldp (fn [action state]
-               (assoc (action state)
-                 :last-action (pr-str action)))
+    (z/foldp (fn [action state] (action state))
       init-state
       actions)))
 
@@ -200,12 +196,18 @@
 (defn find-by-key [k v coll]
   (first (filter #(= v (get % k)) coll)))
 
-(defn closed? [ch]
-  (.-closed ch))
+(defn pipe-to-atom
+  "Adds live-graph to the return value of the original z/pipe-to-atom"
+  [x]
+  (let [live-graph (z/spawn x)]
+    [(z/pipe-to-atom live-graph
+       (atom (zimpl/init live-graph)
+         :meta {::source live-graph}))
+     live-graph]))
 
 (defn zortable [items owner opts]
   (reify
-    om/IDisplayName (display-name [_] "Sortable")
+    om/IDisplayName (display-name [_] "Zortable")
     om/IInitState
     (init-state [_]
       (let [boxes (mapv #(hash-map ::id (str (gensym))
@@ -213,50 +215,48 @@
                     items)]
         {:boxes boxes 
          :stop-ch (chan)
-         :exit-ch (chan)
          :drag nil}))
     om/IWillMount
     (will-mount [_]
       (go-loop []
-        (when-not (closed? (om/get-state owner :exit-ch))
+        (when (om/mounted? owner)
           (let [[tag state] (<! (om/get-state owner :stop-ch))]
             (case tag
-              ::stop 
-              (om/transact! items
-                #(mapv (fn [box]
-                         (find-by-key (:id-key opts) (::key box) %))
-                   (:boxes state))))))
+              ::stop (om/transact! items
+                       #(mapv (fn [box]
+                                (find-by-key (:id-key opts) (::key box) %))
+                          (:boxes state))))))
         (recur)))
     om/IDidMount
     (did-mount [_]
-      (let [boxes (mapv (comp add-pos add-node)
-                    (om/get-state owner :boxes))
-            state-ref (-> (om/get-state owner :stop-ch)
-                        (state-signal (:drag-class opts) {:boxes boxes})
-                        z/pipe-to-atom )]
+      (let [boxes (mapv (comp add-pos add-node) (om/get-state owner :boxes))
+            signal (state-signal (om/get-state owner :stop-ch)
+                     (:drag-class opts) {:boxes boxes})
+            [state-ref live-graph] (pipe-to-atom signal)]
         (add-watch state-ref ::sortable
           (fn [_ _ _ nv]
             (om/update-state! owner #(merge % nv))))
+        (om/set-state! owner :live-graph live-graph)
         (om/set-state! owner :state-ref state-ref)
         (om/set-state! owner :boxes boxes)))
     om/IWillUnmount
     (will-unmount [_]
-      (async/close! (om/get-state owner :exit-ch))
+      (async/close! (om/get-state owner :live-graph))
+      ;; Just in case.
       (remove-watch (om/get-state owner :state-ref) ::sortable))
     om/IRenderState
     (render-state [_ {:keys [boxes]}]
-      (apply dom/div {:className "sort-list"} 
+      (apply dom/div {:className "zort-list"} 
         (if-let [draggable (first (filter moving? boxes))]
           (om/build sort-draggable
             [draggable (find-by-key (:id-key opts) (::key draggable) items)]
             {:opts opts}))
         (->> (map ensure-node boxes)
           (map-indexed vector)
-          (sort-by 
-            (fn [[index box]]
-              (if (nil? (:node box))
-                index
-                (second (box-center box)))))
+          (sort-by (fn [[index box]]
+                     (if (nil? (:node box))
+                       index
+                       (second (box-center box)))))
           (map (fn [[_ box]]
                  (let [item (find-by-key (:id-key opts) (::key box) items)]
                    (if (moving? box)

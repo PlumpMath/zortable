@@ -17,12 +17,19 @@
    :height (+ box-height (* 10 id)) 
    :hue (pos->hue [(rand-int 500) (rand-int 500)])})
 
-(defonce app-state
-  (atom {:boxes (mapv (comp (partial hash-map :card-id (str (gensym)) :items) vec)
-                  (partition 5 (mapv build-box (range 15))))}))
+(def n-boxes 10)
+(def n-cards 2)
 
-(defn box-color
-  [box]
+(def all-boxes (mapv build-box (range n-boxes)))
+
+(def cards
+  (mapv (fn [bxs] {:card-id (str (gensym)) :items (vec bxs)}) 
+        (partition (/ n-boxes n-cards) all-boxes)))
+
+(defonce app-state
+  (atom {:cards cards}))
+
+(defn box-color [box]
   (let [opacity 1]
     (str "hsla(" (:hue box) ",50%,50%," opacity ")")))
 
@@ -54,6 +61,7 @@
 
 (defn card [{:keys [items card-id]} owner]
   (reify
+    om/IDisplayName (display-name [_] "Card")
     om/IRender
     (render [_]
       (dom/div #js {:id card-id :style #js {:position "relative"}}
@@ -77,7 +85,7 @@
                                 :user-select "none"}}
         (dom/div nil 
           (dom/h1 nil "Sortable")
-          (om/build zortable (:boxes state)
+          (om/build zortable (:cards state)
             {:opts {:box-view card
                     :id-key :card-id
                     :drag-class drag-class
