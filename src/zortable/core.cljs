@@ -129,16 +129,28 @@
     drop-boxes
     (assoc :drag nil)))
 
+;; We check dragging? before updating the state in case the signal
+;; came from some other sortable component.
+
 (defrecord NoOp [] IFn (-invoke [_ state] state))
+
 (defrecord StartDrag [drag-class pos et]
   IFn (-invoke [_ state]
         (start-drag drag-class pos et state)))
-(defrecord Drag [pos] IFn (-invoke [_ state] (drag pos state)))
+
+(defrecord Drag [pos]
+  IFn (-invoke [_ state]
+        (if (nil? (:drag state))
+          state
+          (drag pos state))))
+
 (defrecord StopDrag [ch]
   IFn (-invoke [_ state]
-        (let [state' (stop-drag state)]
-          (go (>! ch [::stop state']))
-          state')))
+        (if (nil? (:drag state))
+          state
+          (let [state' (stop-drag state)]
+            (go (>! ch [::stop state']))
+            state'))))
 
 (defn state-signal [stop-ch drag-class init-state]
   (let [dragging-positions (z/keep-when mouse/down?
