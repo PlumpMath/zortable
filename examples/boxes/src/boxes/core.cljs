@@ -23,11 +23,14 @@
 (def all-boxes (mapv build-box (range n-boxes)))
 
 (def cards
-  (mapv (fn [bxs] {:card-id (str (gensym)) :items (vec bxs)}) 
-        (partition (/ n-boxes n-cards) all-boxes)))
+  (mapv (fn [bxs] {:card-id (rand-int 100) 
+                  :items (vec bxs)
+                  :sort (mapv :item-id bxs)}) 
+    (partition (/ n-boxes n-cards) all-boxes)))
 
 (defonce app-state
-  (atom {:cards cards}))
+  (atom {:items cards
+         :sort (mapv :card-id cards)}))
 
 (defn box-color [box]
   (let [opacity 1]
@@ -42,9 +45,10 @@
         (dom/br nil)
         (dom/br nil)))))
 
-(def drag-class "drag-item")
+(def item-drag-class "drag-item")
+(def card-drag-class "drag-class")
 
-(defn drag-icon []
+(defn drag-icon [drag-class]
   (dom/span #js {:className drag-class} "\u22EE"))
 
 (defn render-item [item owner]
@@ -56,21 +60,23 @@
         (dom/div #js {:style #js {:backgroundColor (box-color item)
                                   :height (:height item)
                                   :width 100}}
-          (drag-icon)
+          (drag-icon item-drag-class)
           (:item-id item))))))
 
-(defn card [{:keys [items card-id]} owner]
+(defn card [{:keys [sort items card-id]} owner]
   (reify
     om/IDisplayName (display-name [_] "Card")
     om/IRender
     (render [_]
       (dom/div #js {:id card-id :style #js {:position "relative"}}
-        (drag-icon)
+        (drag-icon card-drag-class)
         (pr-str (map :item-id items))
-        (om/build zortable items 
-          {:opts {:box-view render-item
+        (println "card")
+        (om/build zortable {:sort sort :items items} 
+          {:react-key card-id
+           :opts {:box-view render-item
                   :id-key :item-id
-                  :drag-class drag-class 
+                  :drag-class item-drag-class 
                   :box-filler render-filler}})))))
 
 (defn render-state [state owner]
@@ -85,10 +91,10 @@
                                 :user-select "none"}}
         (dom/div nil 
           (dom/h1 nil "Sortable")
-          (om/build zortable (:cards state)
+          (om/build zortable state 
             {:opts {:box-view card
                     :id-key :card-id
-                    :drag-class drag-class
+                    :drag-class card-drag-class 
                     :box-filler render-filler}}))))))
 
 (om/root render-state app-state
