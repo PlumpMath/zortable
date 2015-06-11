@@ -177,6 +177,11 @@
 ;; ====================================================================== 
 ;; Wrapper Components
 
+(def valid-opts #{:box-view :box-filler})
+
+(defn clean-opts [opts]
+  (apply dissoc opts valid-opts))
+
 (defn sort-draggable [{:keys [box item]} owner opts]
   (reify
     om/IDisplayName (display-name [_] "SortDraggable")
@@ -188,15 +193,19 @@
                                 :zIndex 1
                                 :top (:top box)
                                 :left (:left box)}}
-        (om/build (:box-view opts) item {:react-key (:id box)})))))
+        (om/build (:box-view opts) item
+          {:react-key (:id box)
+           :opts (:opts opts)})))))
 
-(defn sort-filler [item owner opts]
+(defn sort-filler [{:keys [item box]} owner opts]
   (reify
     om/IDisplayName (display-name [_] "SortFiller")
     om/IRender
     (render [_]
       (dom/div #js {:className "sortable-filler"}
-        (om/build (:box-filler opts) item)))))
+        (om/build (:box-filler opts) item
+          {:init-state (select-keys box [:width :height])
+           :opts (:opts opts)})))))
 
 (defn sort-wrapper [item owner opts]
   (reify
@@ -205,7 +214,8 @@
     (render-state [_ {:keys [eid id]}]
       (dom/div #js {:id eid 
                     :className "sortable-container"}
-        (om/build (:box-view opts) item {:react-key id})))))
+        (om/build (:box-view opts) item
+          {:opts (:opts opts) :react-key id})))))
 
 (defn zortable [{:keys [sort items]} owner opts]
   (reify
@@ -215,7 +225,7 @@
       ;; State present during the whole lifecycle
       {:zid (guid) ;; Unique to each loaded zortable
        :stop-ch (chan)
-       :ids @sort
+       :ids (om/value sort)
        :id->eid (zipmap @sort (mapv (fn [_] (guid)) @sort))
        ;; State present during drag
        :start-pos []
@@ -261,7 +271,7 @@
                  (let [eid (id->eid item-id)
                        item (items item-id)]
                    (if (= item-id moving-id) 
-                     (om/build sort-filler item {:opts opts})
+                     (om/build sort-filler {:item item :box box} {:opts opts})
                      (om/build sort-wrapper item
                        {:opts opts :init-state {:eid eid :id item-id}
                         :react-key item-id}))))
