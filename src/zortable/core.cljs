@@ -43,7 +43,7 @@
     (assoc box :width (.-width size) :height (.-height size))))
 
 (defn add-pos [box]
-  (let [final-pos (style/getPageOffset (:node box))
+  (let [final-pos (style/getPosition (:node box))
         left (.-x final-pos)
         top (.-y final-pos)]
     (assoc box :left left :top top)))
@@ -88,8 +88,6 @@
     (if (or (nil? eid) (not (contains? (set (vals (:id->eid state))) eid)))
       state
       (let [box (eid->box eid)]
-        (println "offset"  (box-offset pos box))
-        (println "startbox" box)
         (assoc state
           :start-pos pos
           :box (assoc box
@@ -103,7 +101,6 @@
   (letfn [(drag-to-pos [box]
             (let [[left top] (map - pos (:offset box))]
               (assoc box :left left :top top)))]
-    (println (drag-to-pos (:box state)))
     (-> state
       (update :box drag-to-pos)
       (update :ids (partial sort-by-pos (:id->eid state))))))
