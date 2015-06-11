@@ -217,6 +217,9 @@
         (om/build (:box-view opts) item
           {:opts (:opts opts) :react-key id})))))
 
+(defn new-ids [sort]
+  (zipmap sort (mapv (fn [_] (guid)) sort)))
+
 (defn zortable [{:keys [sort items]} owner opts]
   (reify
     om/IDisplayName (display-name [_] "Zortable")
@@ -226,7 +229,7 @@
       {:zid (guid) ;; Unique to each loaded zortable
        :stop-ch (chan)
        :ids (om/value sort)
-       :id->eid (zipmap @sort (mapv (fn [_] (guid)) @sort))
+       :id->eid (new-ids @sort) 
        ;; State present during drag
        :start-pos []
        :box {}})
@@ -258,6 +261,13 @@
       (async/close! (om/get-state owner :live-graph))
       (async/close! (om/get-state owner :stop-ch))
       (remove-watch (om/get-state owner :state-ref) ::sortable))
+    om/IWillReceiveProps
+    (will-receive-props [_ {:keys [items sort]}]
+      (assert (= (count items) (count sort))
+        "Length of sort and items don't match")
+      (when-not (= (count sort) (count (om/get-state owner :ids)))
+        (swap! (om/get-state owner :state-ref)
+          #(assoc (assoc % :ids sort) :id->eid (new-ids sort)))))
     om/IRenderState
     (render-state [_ {:keys [ids id->eid zid box]}]
       (let [moving-id (:id box)]
