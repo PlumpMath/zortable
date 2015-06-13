@@ -266,12 +266,19 @@
       (assert (= (count items) (count sort))
         "Length of sort and items don't match")
       (when-not (= (count sort) (count (om/get-state owner :ids)))
-        (swap! (om/get-state owner :state-ref)
-          #(assoc (assoc % :ids sort) :id->eid (new-ids sort)))))
+        (let [ids (new-ids sort)]
+          (swap! (om/get-state owner :state-ref)
+            #(assoc (assoc % :ids sort) :id->eid ids)))))
     om/IRenderState
     (render-state [_ {:keys [ids id->eid zid box]}]
       (let [moving-id (:id box)]
-        (apply dom/div #js {:id zid :className "zort-list"} 
+        (apply dom/div #js {:id zid :className "zort-list"
+                            :style #js {:-webkit-touch-callout "none"
+                                        :-webkit-user-select "none"
+                                        :-khtml-user-select "none"
+                                        :-moz-user-select "none"
+                                        :-ms-user-select "none"
+                                        :user-select "none"}} 
           (when-not (empty? box)
             (om/build sort-draggable
               {:box box 

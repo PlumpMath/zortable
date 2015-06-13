@@ -85,20 +85,14 @@
   (reify
     om/IRender
     (render [_]
-      (dom/div #js {:style #js {:-webkit-touch-callout "none"
-                                :-webkit-user-select "none"
-                                :-khtml-user-select "none"
-                                :-moz-user-select "none"
-                                :-ms-user-select "none"
-                                :user-select "none"}}
-        (dom/div nil 
-          (dom/h1 nil "Sortable")
-          (pr-str (:sort state))
-          (om/build zortable state 
-            {:opts {:box-view card
-                    :id-key :card-id
-                    :drag-class card-drag-class 
-                    :box-filler render-filler}}))))))
+      (dom/div nil 
+        (dom/h1 nil "Sortable")
+        (pr-str (:sort state))
+        (om/build zortable state 
+          {:opts {:box-view card
+                  :id-key :card-id
+                  :drag-class card-drag-class 
+                  :box-filler render-filler}})))))
 
 (om/root render-state app-state
   {:target (. js/document (getElementById "app"))})
