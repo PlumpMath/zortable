@@ -40,8 +40,10 @@
       (letfn [(raise! [tag data]
                 (go (>! edit-ch [tag data])))]
         (let [id (get item id-key)]
-          (dom/div nil
+          (dom/li nil
             (dom/i #js {:className (str item-drag-class " content icon")})
+            (dom/i #js {:className "close icon"
+                        :onClick (fn [_] (raise! :delete id))})
             (dom/input
               #js {:placeholder "New item" 
                    :type "text"
@@ -51,9 +53,7 @@
                    :onChange #(om/update! item val-key (.. % -target -value))
                    :onKeyDown #(when (= (.-key %) "Enter")
                                  (raise! :enter id))
-                   :onBlur (fn [_] (raise! :blur id))})
-            (dom/i #js {:className "close icon"
-                        :onClick (fn [_] (raise! :delete id))})))))))
+                   :onBlur (fn [_] (raise! :blur id))})))))))
 
 (defn list-maker
   "Allows editing and sorting to a list of items:
@@ -97,7 +97,7 @@
       (dom/div #js {:className "list-maker"}
         (let [itemcount (count items)
               itemcount (if (zero? itemcount) 1 itemcount)]
-          (dom/div #js {:className "element-list" :ref "ele-list"}
+          (dom/div #js {:className "list-maker" :ref "ele-list"}
             (om/build zortable
               {:sort sort
                :items (into {} (map (fn [[k v]]
