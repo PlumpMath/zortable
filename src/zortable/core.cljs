@@ -290,6 +290,7 @@
                        (merge (new-ids to-create-ids)))
                 new-state {:ids @sort 
                            :id->eid eids}]
+            (om/update-state! owner #(merge % new-state))
             (async/put! (get-local :reset-ch) [::reset new-state]))))
       om/IRenderState
       (render-state [_ {:keys [ids id->eid zid box]}]
