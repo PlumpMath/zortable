@@ -72,18 +72,12 @@
       (letfn [(focus-on [id]
                 (om/set-state! owner :focus-id id))
               (delete-item [id]
-                (om/transact! data
-                  (fn [d]
-                    (-> d 
-                      (update :items #(dissoc % id))
-                      (update :sort (comp vec (partial remove #(= id %))))))))
+                (om/transact! items #(dissoc % id))
+                (om/transact! sort (comp vec (partial remove #(= id %)))))
               (add-item [idx]
                 (let [id (u/guid)]
-                  (om/transact! data
-                    (fn [d]
-                      (-> d 
-                        (update :items #(assoc % id {id-key id val-key ""}))
-                        (update :sort (partial u/insert-at idx id)))))
+                  (om/transact! items #(assoc % id {id-key id val-key ""}))
+                  (om/transact! sort (partial u/insert-at idx id))
                   id))]
         (go-loop []
           (let [[tag id] (<! (om/get-state owner :edit-ch))]
