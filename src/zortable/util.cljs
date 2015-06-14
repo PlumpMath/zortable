@@ -1,6 +1,5 @@
 (ns zortable.util
   (:import [goog.ui IdGenerator]))
-  
 
 (defn find-index [v coll]
   (let [i (count (take-while #(not= v %) coll))]

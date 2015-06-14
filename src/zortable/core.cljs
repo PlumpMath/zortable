@@ -15,6 +15,8 @@
 ;; ====================================================================== 
 ;; Custom Mouse Target Stream
 
+;; TODO: PR to Zelkova
+
 (defn- listen [el type & xforms]
   (let [out (apply async/chan 1 xforms)]
     (events/listen el type (fn [e] (async/put! out e)))
@@ -23,7 +25,7 @@
 (defn- mouse-target-ch [graph opts]
   (listen js/document "mousemove" (map (fn [e] (.. e -target)))))
 
-(def mouse-target 
+(defonce mouse-target 
   (z/input #js {} ::mouse-target mouse-target-ch))
 
 ;; ======================================================================  
