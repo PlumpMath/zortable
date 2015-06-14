@@ -1,5 +1,4 @@
 (ns zortable.core
-  (:import [goog.ui IdGenerator])
   (:require-macros [cljs.core.async.macros :refer [go go-loop]])
   (:require [clojure.set :as set]
             [cljs.core.async :as async :refer [>! <! chan]]
@@ -10,12 +9,8 @@
             [goog.events :as events]
             [jamesmacaulay.zelkova.signal :as z]
             [jamesmacaulay.zelkova.impl.signal :as zimpl]
-            [jamesmacaulay.zelkova.mouse :as mouse]))
-;; ======================================================================
-;; Util
-
-(defn guid []
-  (.getNextUniqueId (.getInstance IdGenerator)))
+            [jamesmacaulay.zelkova.mouse :as mouse]
+            [zortable.util :as u]))
 
 ;; ====================================================================== 
 ;; Custom Mouse Target Stream
@@ -230,7 +225,7 @@
           {:opts (:opts opts) :react-key id})))))
 
 (defn new-ids [sort]
-  (zipmap sort (mapv (fn [_] (guid)) sort)))
+  (zipmap sort (mapv (fn [_] (u/guid)) sort)))
 
 (defn zortable [{:keys [sort items]} owner opts]
   (letfn [(get-local [kw]
@@ -242,7 +237,7 @@
       om/IInitState
       (init-state [_]
         ;; State present during the whole lifecycle
-        {:zid (guid) ;; Unique to each loaded zortable
+        {:zid (u/guid) ;; Unique to each loaded zortable
          :reset-ch (chan)
          :stop-ch (chan)
          :ids (om/value sort)
