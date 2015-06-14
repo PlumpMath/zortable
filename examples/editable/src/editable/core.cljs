@@ -15,6 +15,17 @@
     (let [empty-val {kork ""}]
       (om/transact! xs #(if (empty? %) [empty-val] (conj % empty-val))))))
 
+(defn find-index [v coll]
+  (let [i (count (take-while #(not= v %) coll))]
+    (when (or (< i (count coll)) 
+            (= v (last coll)))
+      i)))
+
+(defn insert-at [n v xs]
+  (if (< n (count xs))
+    (into (conj (subvec xs 0 n) v) (subvec xs n))
+    (conj xs v)))
+
 (defn drop-nth
   "Drops specified index from vector"
   [n xs]
@@ -77,7 +88,7 @@
                    :onKeyDown #(when (= (.-key %) "Enter")
                                  (raise! :enter id))
                    :onBlur (fn [_] (raise! :blur id))})
-            (dom/button #js {:class "close icon"
+            (dom/button #js {:className "close icon"
                              :onClick (fn [_] (raise! :delete id))}
               "X")))))))
 
@@ -99,19 +110,19 @@
                     (-> d 
                       (update :items #(dissoc % id))
                       (update :sort (comp vec (partial remove #(= id %))))))))
-              (add-item []
+              (add-item [idx]
                 (let [id (z/guid)]
                   (om/transact! data
                     (fn [d]
                       (-> d 
                         (update :items #(assoc % id {id-key id val-key ""}))
-                        (update :sort #(conj % id)))))
+                        (update :sort (partial insert-at idx id)))))
                   id))]
         (go-loop []
           (let [[tag id] (<! (om/get-state owner :edit-ch))]
             (when-not (nil? tag)
               (case tag
-                :enter (focus-on (add-item))
+                :enter (focus-on (add-item (inc (find-index id @sort))))
                 :focus (focus-on id) 
                 :blur (when (empty? (get-in @items [id val-key]))
                         (delete-item id)) 
@@ -122,10 +133,10 @@
       (async/close! (om/get-state owner :edit-ch)))
     om/IRenderState
     (render-state [_ {:keys [edit-ch focus-id]}]
-      (dom/div #js {:class "list-maker"}
+      (dom/div #js {:className "list-maker"}
         (let [itemcount (count items)
               itemcount (if (zero? itemcount) 1 itemcount)]
-          (dom/ul #js {:class "element-list" :ref "ele-list"}
+          (dom/ul #js {:className "element-list" :ref "ele-list"}
             (om/build zortable
               {:sort sort
                :items (into {} (map (fn [[k v]]
@@ -145,8 +156,9 @@
         (dom/h1 nil "Sortable")
         (pr-str (:sort state))
         (apply dom/ul nil
-          (om/build-all (fn [[k v]] (om/component (dom/li nil (:value v))))
-            (:items state)))
+          (om/build-all
+            #(om/component (dom/li nil (get-in state [:items % :value])))
+            (:sort state)))
         (om/build list-maker state
           {:opts {:id-key :item-id :val-key :value}})))))
 

@@ -1,7 +1,8 @@
 (ns zortable.core
   (:import [goog.ui IdGenerator])
   (:require-macros [cljs.core.async.macros :refer [go go-loop]])
-  (:require [cljs.core.async :as async :refer [>! <! chan]]
+  (:require [clojure.set :as set]
+            [cljs.core.async :as async :refer [>! <! chan]]
             [om.core :as om :include-macros true]
             [om.dom :as dom :include-macros true]
             [goog.style :as style]
@@ -17,7 +18,7 @@
   (.getNextUniqueId (.getInstance IdGenerator)))
 
 ;; ====================================================================== 
-;; Custom Stream
+;; Custom Mouse Target Stream
 
 (defn- listen [el type & xforms]
   (let [out (apply async/chan 1 xforms)]
@@ -144,10 +145,17 @@
             state')
           state)))
 
+(defrecord ResetState [new-state]
+  IFn (-invoke [_ state]
+        (merge state new-state)))
+
 ;; ====================================================================== 
 ;; Zelkova Piping
 
-(defn state-signal [stop-ch zid drag-class init-state]
+(defn reset-signal [init-state ch] 
+  (z/input init-state ::reset-signal ch))
+
+(defn state-signal [stop-ch reset-ch zid drag-class init-state]
   (let [dragging-positions (z/keep-when mouse/down? [0 0] mouse/position)
         dragging? (->> (z/constant true)
                     (z/sample-on dragging-positions)
@@ -155,12 +163,16 @@
                     (z/drop-repeats))
         dragstarts (z/keep-if identity true dragging?)
         dragstops (z/keep-if not false dragging?)
+        reset-states (->> (reset-signal init-state reset-ch)
+                       (z/keep-if (comp (partial = ::reset) first))
+                       (z/map second))
         actions (z/merge (z/constant (->NoOp))
                   (z/map (partial ->StartDrag zid drag-class)
                     (z/sample-on dragstarts mouse/position)
                     (z/sample-on dragstarts mouse-target))
                   (z/map (constantly (->StopDrag zid stop-ch)) dragstops)
-                  (z/map (partial ->Drag zid) dragging-positions))]
+                  (z/map (partial ->Drag zid) dragging-positions)
+                  (z/map ->ResetState reset-states))]
     (z/foldp (fn [action state] (action state))
       init-state
       actions)))
@@ -221,75 +233,88 @@
   (zipmap sort (mapv (fn [_] (guid)) sort)))
 
 (defn zortable [{:keys [sort items]} owner opts]
-  (reify
-    om/IDisplayName (display-name [_] "Zortable")
-    om/IInitState
-    (init-state [_]
-      ;; State present during the whole lifecycle
-      {:zid (guid) ;; Unique to each loaded zortable
-       :stop-ch (chan)
-       :ids (om/value sort)
-       :id->eid (new-ids @sort) 
-       ;; State present during drag
-       :start-pos []
-       :box {}})
-    om/IWillMount
-    (will-mount [_]
-      (letfn [(reset-drag-state! []
-                (om/set-state! owner :box {})
-                (om/set-state! owner :start-pos []))]
-        (go-loop []
-          (let [[tag state] (<! (om/get-state owner :stop-ch))]
-            (when (= tag ::stop)
-              (om/update! sort (:ids state))
-              (reset-drag-state!)
-              (recur))))))
-    om/IDidMount
-    (did-mount [_]
-      (let [signal (state-signal (om/get-state owner :stop-ch)
-                     (om/get-state owner :zid)
-                     (:drag-class opts)
-                     (dissoc (om/get-state owner) :stop-ch :zid))
-            [state-ref live-graph] (pipe-to-atom signal)]
-        (add-watch state-ref ::sortable
-          (fn [_ _ _ nv]
-            (om/update-state! owner #(merge % nv))))
-        (om/set-state! owner :live-graph live-graph)
-        (om/set-state! owner :state-ref state-ref)))
-    om/IWillUnmount
-    (will-unmount [_]
-      (async/close! (om/get-state owner :live-graph))
-      (async/close! (om/get-state owner :stop-ch))
-      (remove-watch (om/get-state owner :state-ref) ::sortable))
-    om/IWillReceiveProps
-    (will-receive-props [_ {:keys [items sort]}]
-      (assert (= (count items) (count sort))
-        "Length of sort and items don't match")
-      (when-not (= (count sort) (count (om/get-state owner :ids)))
-        (let [ids (new-ids sort)]
-          (swap! (om/get-state owner :state-ref)
-            #(assoc (assoc % :ids sort) :id->eid ids)))))
-    om/IRenderState
-    (render-state [_ {:keys [ids id->eid zid box]}]
-      (let [moving-id (:id box)]
-        (apply dom/div #js {:id zid :className "zort-list"
-                            :style #js {:-webkit-touch-callout "none"
-                                        :-webkit-user-select "none"
-                                        :-khtml-user-select "none"
-                                        :-moz-user-select "none"
-                                        :-ms-user-select "none"
-                                        :user-select "none"}} 
-          (when-not (empty? box)
-            (om/build sort-draggable
-              {:box box 
-               :item (items moving-id)}
-              {:opts opts :react-key moving-id}))
-          (map (fn [item-id]
-                 (let [eid (id->eid item-id)
-                       item (items item-id)]
-                   (if (= item-id moving-id) 
-                     (om/build sort-filler {:item item :box box} {:opts opts})
-                     (om/build sort-wrapper item
-                       {:opts opts :init-state {:eid eid :id item-id}
-                        :react-key item-id}))))
-            ids))))))
+  (letfn [(get-local [kw]
+            (om/get-state owner kw))
+          (set-local! [kw v]
+            (om/set-state! owner kw v))]
+    (reify
+      om/IDisplayName (display-name [_] "Zortable")
+      om/IInitState
+      (init-state [_]
+        ;; State present during the whole lifecycle
+        {:zid (guid) ;; Unique to each loaded zortable
+         :reset-ch (chan)
+         :stop-ch (chan)
+         :ids (om/value sort)
+         :id->eid (new-ids @sort) 
+         ;; State present during drag
+         :start-pos []
+         :box {}})
+      om/IWillMount
+      (will-mount [_]
+        (letfn [(reset-drag-state! []
+                  (set-local! :box {})
+                  (set-local! :start-pos []))]
+          (go-loop []
+            (let [[tag state] (<! (get-local :stop-ch))]
+              (when (= tag ::stop)
+                (om/update! sort (:ids state))
+                (reset-drag-state!)
+                (recur))))))
+      om/IDidMount
+      (did-mount [_]
+        (let [signal (state-signal
+                       (get-local :stop-ch)
+                       (get-local :reset-ch)
+                       (get-local :zid)
+                       (:drag-class opts)
+                       (dissoc (om/get-state owner) :stop-ch :reset-ch :zid))
+              [state-ref live-graph] (pipe-to-atom signal)]
+          (add-watch state-ref ::sortable
+            (fn [_ _ _ nv]
+              (om/update-state! owner #(merge % nv))))
+          (set-local! :live-graph live-graph)
+          (set-local! :state-ref state-ref)))
+      om/IWillUnmount
+      (will-unmount [_]
+        (async/close! (get-local :live-graph))
+        (async/close! (get-local :stop-ch))
+        (remove-watch (get-local :state-ref) ::sortable))
+      om/IWillReceiveProps
+      (will-receive-props [_ {:keys [items sort]}]
+        (assert (= (count items) (count sort))
+          "Length of sort and items don't match")
+        (when-not (= (count sort) (count (om/get-state owner :ids)))
+          (let [old-ids (set (om/get-state owner :ids))
+                future-ids (set @sort)
+                to-create-ids (set/difference future-ids old-ids)
+                to-delete-ids (set/difference old-ids future-ids)
+                eids (->> (apply dissoc (get-local :id->eid) to-delete-ids)
+                       (merge (new-ids to-create-ids)))
+                new-state {:ids @sort 
+                           :id->eid eids}]
+            (async/put! (get-local :reset-ch) [::reset new-state]))))
+      om/IRenderState
+      (render-state [_ {:keys [ids id->eid zid box]}]
+        (let [moving-id (:id box)]
+          (apply dom/div #js {:id zid :className "zort-list"
+                              :style #js {:WebkitTouchCallout "none"
+                                          :WebkitUserSelect "none"
+                                          :KhtmlUserSelect "none"
+                                          :MozUserSelect "none"
+                                          :msUserSelect "none"
+                                          :userSelect "none"}} 
+            (when-not (empty? box)
+              (om/build sort-draggable
+                {:box box 
+                 :item (items moving-id)}
+                {:opts opts :react-key moving-id}))
+            (map (fn [item-id]
+                   (let [eid (id->eid item-id)
+                         item (items item-id)]
+                     (if (= item-id moving-id) 
+                       (om/build sort-filler {:item item :box box} {:opts opts})
+                       (om/build sort-wrapper item
+                         {:opts opts :init-state {:eid eid :id item-id}
+                          :react-key item-id}))))
+              ids)))))))
