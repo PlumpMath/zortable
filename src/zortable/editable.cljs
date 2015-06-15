@@ -40,7 +40,7 @@
       (letfn [(raise! [tag data]
                 (go (>! edit-ch [tag data])))]
         (let [id (get item id-key)]
-          (dom/li nil
+          (dom/div #js {:className "editable"} 
             (dom/i #js {:className (str item-drag-class " content icon")})
             (dom/i #js {:className "close icon"
                         :onClick (fn [_] (raise! :delete id))})
