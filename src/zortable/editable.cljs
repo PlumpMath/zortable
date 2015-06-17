@@ -47,6 +47,7 @@
             (dom/input
               #js {:placeholder "New item" 
                    :type "text"
+                   :ref "input"
                    :autoFocus (:focus? item)
                    :value (get item val-key)
                    :onFocus (fn [_] (raise! :focus id))
@@ -95,14 +96,20 @@
     om/IRenderState
     (render-state [_ {:keys [edit-ch focus-id]}]
       (dom/div #js {:className "list-maker"}
-        (dom/div #js {:className "list-maker" :ref "ele-list"}
-          (om/build zortable
-            {:sort sort
-             :items (into {} (map (fn [[k v]]
-                                    [k (assoc v :focus? (= focus-id k))])
-                               items))} 
-            {:opts {:box-view editable 
-                    :id-key :item-id
-                    :drag-class item-drag-class 
-                    :box-filler render-filler
-                    :opts (assoc opts :edit-ch edit-ch)}}))))))
+        (apply dom/div #js {:className "list-maker" :ref "ele-list"}
+          (let [items' (->> items
+                         (map (fn [[k v]] [k (assoc v :focus? (= focus-id k))]))
+                         (into {}))]
+            (if (if-let [z? (:zortable? opts)] z? false) 
+              [(om/build zortable
+                 {:sort sort
+                  :items items'} 
+                 {:opts {:box-view editable 
+                         :id-key :item-id
+                         :drag-class item-drag-class 
+                         :box-filler render-filler
+                         :opts (assoc opts :edit-ch edit-ch)}})]
+              (map 
+                #(om/build editable (get items' %)
+                   {:opts (assoc opts :edit-ch edit-ch)})
+                sort))))))))
