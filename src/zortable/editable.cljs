@@ -95,16 +95,14 @@
     om/IRenderState
     (render-state [_ {:keys [edit-ch focus-id]}]
       (dom/div #js {:className "list-maker"}
-        (let [itemcount (count items)
-              itemcount (if (zero? itemcount) 1 itemcount)]
-          (dom/div #js {:className "list-maker" :ref "ele-list"}
-            (om/build zortable
-              {:sort sort
-               :items (into {} (map (fn [[k v]]
-                                      [k (assoc v :focus? (= focus-id k))])
-                                 items))} 
-              {:opts {:box-view editable 
-                      :id-key :item-id
-                      :drag-class item-drag-class 
-                      :box-filler render-filler
-                      :opts (assoc opts :edit-ch edit-ch)}})))))))
+        (dom/div #js {:className "list-maker" :ref "ele-list"}
+          (om/build zortable
+            {:sort sort
+             :items (into {} (map (fn [[k v]]
+                                    [k (assoc v :focus? (= focus-id k))])
+                               items))} 
+            {:opts {:box-view editable 
+                    :id-key :item-id
+                    :drag-class item-drag-class 
+                    :box-filler render-filler
+                    :opts (assoc opts :edit-ch edit-ch)}}))))))
