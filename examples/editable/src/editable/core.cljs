@@ -34,8 +34,7 @@
             #(om/component (dom/li nil (get-in state [:items % :value])))
             (:sort state)))
         (om/build list-maker state
-          {:opts {:id-key :item-id :val-key :value
-                  :disabled? false}})))))
+          {:opts {:id-key :item-id :val-key :value}})))))
 
 (om/root render-state app-state
   {:target (. js/document (getElementById "app"))})

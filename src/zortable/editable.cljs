@@ -54,7 +54,12 @@
                    :onChange #(om/update! item val-key (.. % -target -value))
                    :onKeyDown #(when (= (.-key %) "Enter")
                                  (raise! :enter id))
-                   :onBlur (fn [_] (raise! :blur id))})))))))
+                   :onBlur (fn [_] (raise! :blur id))})))))
+    om/IDidMount
+    (did-mount [_]
+      (println item)
+      (when (:focus? item)
+        (.focus (om/get-node owner "input"))))))
 
 (defn list-maker
   "Allows editing and sorting to a list of items:
@@ -77,14 +82,14 @@
                 (om/transact! sort (comp vec (partial remove #(= id %)))))
               (add-item [idx]
                 (let [id (u/guid)]
+                  (focus-on id)
                   (om/transact! items #(assoc % id {id-key id val-key ""}))
-                  (om/transact! sort (partial u/insert-at idx id))
-                  id))]
+                  (om/transact! sort (partial u/insert-at idx id))))]
         (go-loop []
           (let [[tag id] (<! (om/get-state owner :edit-ch))]
             (when (some? tag)
               (case tag
-                :enter (focus-on (add-item (inc (u/find-index id @sort))))
+                :enter (add-item (inc (u/find-index id @sort)))
                 :focus (focus-on id) 
                 :blur (when (empty? (get-in @items [id val-key]))
                         (delete-item id)) 
@@ -110,5 +115,6 @@
                          :box-filler render-filler
                          :opts (assoc opts :edit-ch edit-ch)}})]
               (map #(om/build editable (get items' %)
-                      {:opts (assoc opts :edit-ch edit-ch)})
+                      {:opts (assoc opts :edit-ch edit-ch)
+                       :key :item-id})
                 sort))))))))
