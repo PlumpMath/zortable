@@ -102,7 +102,8 @@
       (dom/div #js {:className "list-maker"}
         (apply dom/div #js {:className "list-maker" :ref "ele-list"}
           (let [items' (->> items
-                         (map (fn [[k v]] [k (assoc v :focus? (= focus-id k))]))
+                         (map (fn [[k v]]
+                                [k (assoc v :focus? (= focus-id k))]))
                          (into {}))]
             (if-not (:disabled? opts) 
               [(om/build zortable
@@ -115,5 +116,5 @@
                          :opts (assoc opts :edit-ch edit-ch)}})]
               (map #(om/build editable (get items' %)
                       {:opts (assoc opts :edit-ch edit-ch)
-                       :key :item-id})
+                       :key id-key})
                 sort))))))))
