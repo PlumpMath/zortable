@@ -20,7 +20,7 @@
 
 (defn- listen [el type & xforms]
   (let [out (apply async/chan 1 xforms)
-        listen-fn (fn [e] (.log js/console e) (async/put! out e))]
+        listen-fn (fn [e] (async/put! out e))]
     (events/listen el type listen-fn)
     (reify
       async-impl/ReadPort
@@ -245,85 +245,103 @@
             (om/get-state owner kw))
           (set-local! [kw v]
             (om/set-state! owner kw v))]
-    (reify
-      om/IDisplayName (display-name [_] "Zortable")
-      om/IInitState
-      (init-state [_]
-        ;; State present during the whole lifecycle
-        {:zid (u/guid) ;; Unique to each loaded zortable
-         :reset-ch (chan)
-         :stop-ch (chan)
-         :ids (om/value sort)
-         :id->eid (new-ids @sort) 
-         ;; State present during drag
-         :start-pos []
-         :box {}})
-      om/IWillMount
-      (will-mount [_]
-        (letfn [(reset-drag-state! []
-                  (set-local! :box {})
-                  (set-local! :start-pos []))]
-          (go-loop []
-            (let [[tag state] (<! (get-local :stop-ch))]
-              (when (= tag ::stop)
-                (om/update! sort (:ids state))
-                (reset-drag-state!)
-                (recur))))))
-      om/IDidMount
-      (did-mount [_]
-        (let [signal (state-signal
-                       (get-local :stop-ch)
-                       (get-local :reset-ch)
-                       (get-local :zid)
-                       (:drag-class opts)
-                       (dissoc (om/get-state owner) :stop-ch :reset-ch :zid))
-              [state-ref live-graph] (pipe-to-atom signal)]
-          (add-watch state-ref ::sortable
-            (fn [_ _ _ nv]
-              (om/update-state! owner #(merge % nv))))
-          (set-local! :live-graph live-graph)
-          (set-local! :state-ref state-ref)))
-      om/IWillUnmount
-      (will-unmount [_]
-        (async/close! (get-local :live-graph))
-        (async/close! (get-local :stop-ch))
-        (remove-watch (get-local :state-ref) ::sortable))
-      om/IWillReceiveProps
-      (will-receive-props [_ {:keys [items sort]}]
-        (assert (= (count items) (count sort))
-          "Length of sort and items don't match")
-        (when-not (= (count sort) (count (om/get-state owner :ids)))
-          (let [old-ids (set (om/get-state owner :ids))
-                future-ids (set @sort)
-                to-create-ids (set/difference future-ids old-ids)
-                to-delete-ids (set/difference old-ids future-ids)
-                eids (->> (apply dissoc (get-local :id->eid) to-delete-ids)
-                       (merge (new-ids to-create-ids)))
-                new-state {:ids @sort 
-                           :id->eid eids}]
-            (om/update-state! owner #(merge % new-state))
-            (async/put! (get-local :reset-ch) [::reset new-state]))))
-      om/IRenderState
-      (render-state [_ {:keys [ids id->eid zid box]}]
-        (let [moving-id (:id box)]
-          (apply dom/div #js {:id zid :className "zort-list"
+    (if (:disabled? opts)
+      (reify
+        om/IDisplayName (display-name [_] "Zortable")
+        om/IRender
+        (render [_]
+          (apply dom/div #js {:className "zort-list"
                               :style #js {:WebkitTouchCallout "none"
                                           :WebkitUserSelect "none"
                                           :KhtmlUserSelect "none"
                                           :MozUserSelect "none"
                                           :msUserSelect "none"
                                           :userSelect "none"}} 
-            (when-not (empty? box)
-              (om/build sort-draggable
-                {:box box 
-                 :item (items moving-id)}
-                {:opts opts :react-key moving-id}))
             (map (fn [item-id]
-                   (let [eid (id->eid item-id)
-                         item (items item-id)]
-                     (if (= item-id moving-id) 
-                       (om/build sort-filler {:item item :box box} {:opts opts})
-                       (om/build sort-wrapper item
-                         {:opts opts :init-state {:eid eid :id item-id}
-                          :react-key item-id}))))
-              ids)))))))
+                   (let [item (items item-id)]
+                     (om/build sort-wrapper item
+                       {:opts opts :init-state {:id item-id}
+                        :react-key item-id})))
+              sort))))
+      (reify
+        om/IDisplayName (display-name [_] "Zortable")
+        om/IInitState
+        (init-state [_]
+          ;; State present during the whole lifecycle
+          {:zid (u/guid) ;; Unique to each loaded zortable
+           :reset-ch (chan)
+           :stop-ch (chan)
+           :ids (om/value sort)
+           :id->eid (new-ids @sort) 
+           ;; State present during drag
+           :start-pos []
+           :box {}})
+        om/IWillMount
+        (will-mount [_]
+          (letfn [(reset-drag-state! []
+                    (set-local! :box {})
+                    (set-local! :start-pos []))]
+            (go-loop []
+              (let [[tag state] (<! (get-local :stop-ch))]
+                (when (= tag ::stop)
+                  (om/update! sort (:ids state))
+                  (reset-drag-state!)
+                  (recur))))))
+        om/IDidMount
+        (did-mount [_]
+          (let [signal (state-signal
+                         (get-local :stop-ch)
+                         (get-local :reset-ch)
+                         (get-local :zid)
+                         (:drag-class opts)
+                         (dissoc (om/get-state owner) :stop-ch :reset-ch :zid))
+                [state-ref live-graph] (pipe-to-atom signal)]
+            (add-watch state-ref ::sortable
+              (fn [_ _ _ nv]
+                (om/update-state! owner #(merge % nv))))
+            (set-local! :live-graph live-graph)
+            (set-local! :state-ref state-ref)))
+        om/IWillUnmount
+        (will-unmount [_]
+          (async/close! (get-local :live-graph))
+          (async/close! (get-local :stop-ch))
+          (remove-watch (get-local :state-ref) ::sortable))
+        om/IWillReceiveProps
+        (will-receive-props [_ {:keys [items sort]}]
+          (assert (= (count items) (count sort))
+            "Length of sort and items don't match")
+          (when-not (= (count sort) (count (om/get-state owner :ids)))
+            (let [old-ids (set (om/get-state owner :ids))
+                  future-ids (set @sort)
+                  to-create-ids (set/difference future-ids old-ids)
+                  to-delete-ids (set/difference old-ids future-ids)
+                  eids (->> (apply dissoc (get-local :id->eid) to-delete-ids)
+                         (merge (new-ids to-create-ids)))
+                  new-state {:ids @sort 
+                             :id->eid eids}]
+              (om/update-state! owner #(merge % new-state))
+              (async/put! (get-local :reset-ch) [::reset new-state]))))
+        om/IRenderState
+        (render-state [_ {:keys [ids id->eid zid box]}]
+          (let [moving-id (:id box)]
+            (apply dom/div #js {:id zid :className "zort-list"
+                                :style #js {:WebkitTouchCallout "none"
+                                            :WebkitUserSelect "none"
+                                            :KhtmlUserSelect "none"
+                                            :MozUserSelect "none"
+                                            :msUserSelect "none"
+                                            :userSelect "none"}} 
+              (when-not (empty? box)
+                (om/build sort-draggable
+                  {:box box 
+                   :item (items moving-id)}
+                  {:opts opts :react-key moving-id}))
+              (map (fn [item-id]
+                     (let [eid (id->eid item-id)
+                           item (items item-id)]
+                       (if (= item-id moving-id) 
+                         (om/build sort-filler {:item item :box box} {:opts opts})
+                         (om/build sort-wrapper item
+                           {:opts opts :init-state {:eid eid :id item-id}
+                            :react-key item-id}))))
+                ids))))))))
