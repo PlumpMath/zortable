@@ -57,7 +57,6 @@
                    :onBlur (fn [_] (raise! :blur id))})))))
     om/IDidMount
     (did-mount [_]
-      (println item)
       (when (:focus? item)
         (.focus (om/get-node owner "input"))))))
 
