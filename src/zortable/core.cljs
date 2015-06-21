@@ -80,7 +80,7 @@
   (not (empty? (:box state))))
 
 (defn start-drag
-  "Identifies the boxes to be dragged (or build) and returns the updated state"
+  "Finds the box to be dragged and returns the updated state"
   [drag-class pos et state]
   (let [eid (find-drag-id drag-class et)]
     (if (or (nil? eid) (not (contains? (set (vals (:id->eid state))) eid)))

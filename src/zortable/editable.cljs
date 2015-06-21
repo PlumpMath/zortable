@@ -100,7 +100,7 @@
           (let [items' (->> items
                          (map (fn [[k v]] [k (assoc v :focus? (= focus-id k))]))
                          (into {}))]
-            (if (if-let [z? (:zortable? opts)] z? false) 
+            (if-not (:disabled? opts) 
               [(om/build zortable
                  {:sort sort
                   :items items'} 
@@ -109,7 +109,6 @@
                          :drag-class item-drag-class 
                          :box-filler render-filler
                          :opts (assoc opts :edit-ch edit-ch)}})]
-              (map 
-                #(om/build editable (get items' %)
-                   {:opts (assoc opts :edit-ch edit-ch)})
+              (map #(om/build editable (get items' %)
+                      {:opts (assoc opts :edit-ch edit-ch)})
                 sort))))))))

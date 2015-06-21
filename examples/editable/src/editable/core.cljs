@@ -35,7 +35,7 @@
             (:sort state)))
         (om/build list-maker state
           {:opts {:id-key :item-id :val-key :value
-                  :zortable? false}})))))
+                  :disabled? false}})))))
 
 (om/root render-state app-state
   {:target (. js/document (getElementById "app"))})
