@@ -1,6 +1,7 @@
 (ns zortable.core
   (:require-macros [cljs.core.async.macros :refer [go go-loop]])
-  (:require [clojure.set :as set]
+  (:require [cljs.core.async.impl.protocols :as async-impl]
+            [clojure.set :as set]
             [cljs.core.async :as async :refer [>! <! chan]]
             [om.core :as om :include-macros true]
             [om.dom :as dom :include-macros true]
@@ -18,10 +19,20 @@
 ;; TODO: PR to Zelkova
 
 (defn- listen [el type & xforms]
-  (let [out (apply async/chan 1 xforms)]
-    (events/listen el type (fn [e] (async/put! out e)))
-    out))
+  (let [out (apply async/chan 1 xforms)
+        listen-fn (fn [e] (.log js/console e) (async/put! out e))]
+    (events/listen el type listen-fn)
+    (reify
+      async-impl/ReadPort
+      (take! [_ f] (async-impl/take! out f))
+      async-impl/WritePort
+      (put! [_ v f] (async-impl/put! out v f))
+      async-impl/Channel
+      (close! [_] (do (events/unlisten el type listen-fn)
+                      (async-impl/close! out)))
+      (closed? [_] (async-impl/closed? out)))))
 
+;; These should be be unmounted
 (defn- mouse-target-ch [graph opts]
   (listen js/document "mousemove" (map (fn [e] (.. e -target)))))
 
