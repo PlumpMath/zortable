@@ -7,7 +7,7 @@
   :dependencies [[org.clojure/clojure "1.7.0"]
                  [org.clojure/clojurescript "0.0-3308" :scope "provided"]
                  [org.clojure/core.async "0.1.346.0-17112a-alpha"]
-                 [bensu/om "0.8.9-SNAPSHOT"]
+                 [bensu/om "0.8.8"]
                  [jamesmacaulay/zelkova "0.4.0"]]
 
   :plugins [[lein-cljsbuild "1.0.5"]
