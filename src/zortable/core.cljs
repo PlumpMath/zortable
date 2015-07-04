@@ -218,8 +218,10 @@
                                    (events/unlisten EventType.MOUSEMOVE
                                      (get-local [:listeners 0]))
                                    (events/unlisten EventType.MOUSEUP
-                                     (get-local [:listeners 1]))) 
-                                 (next-state! (stop-drag state))))
+                                     (get-local [:listeners 1])))
+                                 (let [state' (stop-drag state)]
+                                   (next-state! state')
+                                   (om/update! sort (:ids state')))))
                 (recur)))))
         om/IWillUnmount
         (will-unmount [_]
@@ -234,7 +236,7 @@
                   to-create-ids (set/difference future-ids old-ids)
                   to-delete-ids (set/difference old-ids future-ids)
                   eids (->> (apply dissoc (get-local :id->eid) to-delete-ids)
-                            (merge (new-ids to-create-ids)))]
+                         (merge (new-ids to-create-ids)))]
               (next-state! {:ids @sort :id->eid eids}))))
         om/IRenderState
         (render-state [_ {:keys [ch ids id->eid box] :as state}]
