@@ -90,7 +90,6 @@
         (pr-str (:sort state))
         (om/build zortable state 
           {:opts {:box-view card
-                  :disabled? true
                   :id-key :card-id
                   :drag-class card-drag-class 
                   :box-filler render-filler}})))))
