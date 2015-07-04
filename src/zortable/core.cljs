@@ -137,11 +137,12 @@
     (render-state [_ {:keys [eid id]}]
       (dom/div #js {:id eid 
                     :onMouseDown
-                    (fn [e]
-                      (when (element-inside? (:drag-class opts) (.-target e))
-                        (put! (:ch opts) [:start-drag {:eid eid
-                                                       :pos (event->pos e)}])
-                        nil))
+                    (when-not (:disabled? opts)
+                      (fn [e]
+                        (when (element-inside? (:drag-class opts) (.-target e))
+                          (put! (:ch opts) [:start-drag {:eid eid
+                                                         :pos (event->pos e)}])
+                          nil)))
                     :className "sortable-container"}
         (om/build (:box-view opts) item
           {:opts (:opts opts) :react-key id})))))
