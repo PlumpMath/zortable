@@ -26,6 +26,7 @@
      :source-paths ["src" "test"]
      :compiler {:output-to "target/testable.js"
                 :main 'test.runner 
+                :cache-analysis true
                 :optimizations :whitespace}}
     {:id "boxes"
      :source-paths ["src" "examples/boxes"]
