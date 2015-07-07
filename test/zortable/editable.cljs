@@ -3,7 +3,6 @@
             [cljs.core.async :as async :refer (<! >! chan)]
             [cljs-react-test.simulate :as sim]
             [cljs-react-test.utils :as tu]
-            [dommy.core :refer-macros [sel1 sel]]
             [om.core :as om :include-macros true]
             [om.dom :as dom :include-macros true]
             [zortable.editable :as e])
@@ -58,7 +57,7 @@
         (sim/focus last-node nil)
         #_(sim/key-down last-node "Enter")
         #_(go (do (<! watch-ch)
-                (sim/input (last (sel [:input])) last-val)
+                (sim/input (last input-nodes) last-val)
                 (is (= (inc (count list)) (count (:xs @state))))
                 (println "FIX: Not rerendering in list-maker test"
-                         (count (sel c :input)))))))))
+                         (count input-nodes))))))))

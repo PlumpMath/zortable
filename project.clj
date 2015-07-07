@@ -17,8 +17,7 @@
 
   :clean-targets ^{:protect false} ["resources/public/js/compiled" "target"]
   
-  :profiles {:dev {:dependencies [[prismatic/dommy "1.0.0"]
-                                  [cljs-react-test "0.1.3-SNAPSHOT"]
+  :profiles {:dev {:dependencies [[cljs-react-test "0.1.3-SNAPSHOT"]
                                   [cljsjs/react-with-addons "0.13.3-0"]]}}
 
   :cljsbuild
