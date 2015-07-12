@@ -77,8 +77,9 @@
       (letfn [(focus-on [id]
                 (om/set-state! owner :focus-id id))
               (delete-item [id]
-                (om/transact! items #(dissoc % id))
-                (om/transact! sort (comp vec (partial remove #(= id %)))))
+                (when-not (= 1 (count @sort))
+                  (om/transact! items #(dissoc % id))
+                  (om/transact! sort (comp vec (partial remove #(= id %))))))
               (add-item [idx]
                 (let [id (u/guid)]
                   (focus-on id)
