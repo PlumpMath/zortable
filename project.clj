@@ -1,5 +1,5 @@
-(defproject zortable "0.1.2-SNAPSHOT"
-  :description "Reusable sortable om component using Zelkova"
+(defproject zortable "0.1.3-SNAPSHOT"
+  :description "Reusable sortable om component"
   :url "https://github.com/bensu/zortable"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
@@ -10,7 +10,7 @@
                  [org.omcljs/om "0.9.0" :exclusions [cljsjs/react]]]
 
   :plugins [[lein-cljsbuild "1.0.5"]
-            [lein-doo "0.1.2-SNAPSHOT"]
+            [lein-doo "0.1.3-SNAPSHOT"]
             [lein-figwheel "0.3.2"]]
 
   :source-paths ["src"]
@@ -25,7 +25,7 @@
    [{:id "test"
      :source-paths ["src" "test"]
      :compiler {:output-to "target/testable.js"
-                :main test.runner 
+                :main "test.runner"
                 :cache-analysis true
                 :optimizations :whitespace}}
     {:id "boxes"
