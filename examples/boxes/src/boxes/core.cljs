@@ -71,7 +71,7 @@
     om/IDisplayName (display-name [_] "Card")
     om/IRender
     (render [_]
-      (dom/div #js {:id card-id :style #js {:position "relative"}}
+      (dom/div #js {:id card-id}
         (drag-icon card-drag-class)
         (pr-str sort)
         (om/build zortable {:sort sort :items items} 

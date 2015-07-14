@@ -132,7 +132,8 @@
 
 (defn sort-wrapper [item owner opts]
   (reify
-    om/IDisplayName (display-name [_] "SortWrapper")
+    om/IDisplayName
+    (display-name [_] "SortWrapper")
     om/IRenderState
     (render-state [_ {:keys [eid id]}]
       (dom/div #js {:id eid 
@@ -155,11 +156,13 @@
                           :KhtmlUserSelect "none"
                           :MozUserSelect "none"
                           :msUserSelect "none"
-                          :userSelect "none"})
+                          :userSelect "none"
+                          :position "relative"})
 
 (defn disabled-zortable [{:keys [sort items]} owner opts]
   (reify
-    om/IDisplayName (display-name [_] "Zortable")
+    om/IDisplayName
+    (display-name [_] "Zortable")
     om/IRender
     (render [_]
       (apply dom/div #js {:className "zort-list"
@@ -184,7 +187,8 @@
     (if (:disabled? opts)
       (disabled-zortable data owner opts)
       (reify
-        om/IDisplayName (display-name [_] "Zortable")
+        om/IDisplayName
+        (display-name [_] "Zortable")
         om/IInitState
         (init-state [_]
           (let [ch (chan)]
