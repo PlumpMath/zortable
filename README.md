@@ -1,3 +1,4 @@
+[![Build Status](https://travis-ci.org/vikeri/zortable.svg?branch=master)](https://travis-ci.org/vikeri/zortable)
 # zortable
 Reusable sortable om component
 
