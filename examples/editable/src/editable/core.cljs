@@ -26,9 +26,9 @@
   "Add button for adding a new list element"
   [last-sort owner {:keys [edit-ch]}]
   (om/component
-    (dom/div (clj->js {:style {:cursor "pointer"
-                               :font-size "2em"}
-                       :onClick #(put! edit-ch [:enter last-sort])}) "+")))
+    (dom/div #js {:style #js {:cursor "pointer"
+                              :font-size "2em"}
+                  :onClick #(put! edit-ch [:enter last-sort])} "+")))
 
 (defn render-state [state owner]
   (reify

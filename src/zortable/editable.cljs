@@ -108,9 +108,7 @@
                                 [k (assoc v :focus? (= focus-id k))]))
                          (into {}))]
             (if-not (:disabled? opts)
-              [(om/build zortable
-                 {:sort sort
-                  :items items'} 
+              [(om/build zortable {:sort sort :items items'} 
                  {:opts {:box-view editable 
                          :id-key :item-id
                          :drag-class item-drag-class 
@@ -120,4 +118,5 @@
                       {:opts (assoc opts :edit-ch edit-ch)
                        :key id-key})
                 sort))))
-               (om/build add-node (last sort) {:opts {:edit-ch edit-ch}})))))
+        (if (some? add-node)
+          (om/build add-node (last sort) {:opts {:edit-ch edit-ch}}))))))
