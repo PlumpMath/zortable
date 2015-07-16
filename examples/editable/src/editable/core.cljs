@@ -8,7 +8,7 @@
 (enable-console-print!)
 
 (defn build-box [id]
-  {:item-id id
+  {:item-id (+ 100 id)
    :value (str id)})
 
 (def n-strings 5)
@@ -22,6 +22,14 @@
   (atom {:items cards
          :sort (vec (keys cards))}))
 
+(defn add-node
+  "Add button for adding a new list element"
+  [last-sort owner {:keys [edit-ch]}]
+  (om/component
+    (dom/div (clj->js {:style {:cursor "pointer"
+                               :font-size "2em"}
+                       :onClick #(put! edit-ch [:enter last-sort])}) "+")))
+
 (defn render-state [state owner]
   (reify
     om/IRender
@@ -34,7 +42,9 @@
             #(om/component (dom/li nil (get-in state [:items % :value])))
             (:sort state)))
         (om/build list-maker state
-          {:opts {:id-key :item-id :val-key :value}})))))
+                  {:opts {:add-node add-node
+                          :id-key :item-id
+                          :val-key :value}})))))
 
 (om/root render-state app-state
   {:target (. js/document (getElementById "app"))})

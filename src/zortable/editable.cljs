@@ -63,8 +63,9 @@
 (defn list-maker
   "Allows editing and sorting to a list of items:
   - items is a map with: {id {:id-key id :val-key \"String Value\"
-  - sort is a vector [id]" 
-  [{:keys [sort items] :as data} owner {:keys [id-key val-key] :as opts}]
+  - sort is a vector [id]
+  - add-node is a component for adding more list items"
+  [{:keys [sort items] :as data} owner {:keys [id-key val-key add-node] :as opts}]
   (reify
     om/IDisplayName
     (display-name [_] "ListMaker")
@@ -100,13 +101,13 @@
       (async/close! (om/get-state owner :edit-ch)))
     om/IRenderState
     (render-state [_ {:keys [edit-ch focus-id]}]
-      (dom/div #js {:className "list-maker"}
+      (dom/div nil
         (apply dom/div #js {:className "list-maker" :ref "ele-list"}
           (let [items' (->> items
                          (map (fn [[k v]]
                                 [k (assoc v :focus? (= focus-id k))]))
                          (into {}))]
-            (if-not (:disabled? opts) 
+            (if-not (:disabled? opts)
               [(om/build zortable
                  {:sort sort
                   :items items'} 
@@ -118,4 +119,5 @@
               (map #(om/build editable (get items' %)
                       {:opts (assoc opts :edit-ch edit-ch)
                        :key id-key})
-                sort))))))))
+                sort))))
+               (om/build add-node (last sort) {:opts {:edit-ch edit-ch}})))))
