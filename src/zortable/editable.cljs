@@ -72,6 +72,8 @@
     om/IInitState
     (init-state [_]
       {:edit-ch (chan)
+       :z-ch (chan)
+       :d-id nil ;; dragging-id
        :focus-id (if-not (empty? sort) (last sort))})
     om/IWillMount 
     (will-mount [_]
@@ -92,15 +94,31 @@
               (case tag
                 :enter (add-item (inc (u/find-index id @sort)))
                 :focus (focus-on id) 
-                :blur (when (empty? (get-in @items [id val-key]))
-                        (delete-item id)) 
+                :blur  (when (and (empty? (get-in @items [id val-key]))
+                               (nil? (om/get-state owner :d-id)))
+                         (delete-item id)) 
                 :delete (delete-item id))
+              (recur))))
+        (go-loop []
+          (let [[tag {:keys [id]}] (<! (om/get-state owner :z-ch))]
+            (when (some? tag)
+              (case tag
+                :start-drag (om/set-state! owner :d-id id)
+                :stop-drag
+                (do (doseq [rid (->> @items
+                                  (filter (comp empty? #(get % val-key) second))
+                                  (map first)
+                                  (remove #(= % (om/get-state owner :d-id))))]
+                      (delete-item rid))
+                    (om/set-state! owner :d-id nil))
+                nil)
               (recur))))))
     om/IWillUnmount
     (will-unmount [_]
-      (async/close! (om/get-state owner :edit-ch)))
+      (async/close! (om/get-state owner :edit-ch))
+      (async/close! (om/get-state owner :z-ch)))
     om/IRenderState
-    (render-state [_ {:keys [edit-ch focus-id]}]
+    (render-state [_ {:keys [z-ch edit-ch focus-id]}]
       (dom/div nil
         (apply dom/div #js {:className "list-maker" :ref "ele-list"}
           (let [items' (->> items
@@ -113,6 +131,7 @@
                          :id-key :item-id
                          :drag-class item-drag-class 
                          :box-filler render-filler
+                         :pub-ch z-ch
                          :opts (assoc opts :edit-ch edit-ch)}})]
               (map #(om/build editable (get items' %)
                       {:opts (assoc opts :edit-ch edit-ch)

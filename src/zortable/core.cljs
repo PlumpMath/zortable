@@ -142,6 +142,7 @@
                       (fn [e]
                         (when (element-inside? (:drag-class opts) (.-target e))
                           (put! (:ch opts) [:start-drag {:eid eid
+                                                         :id id
                                                          :pos (event->pos e)}])
                           nil)))
                     :className "sortable-container"}
@@ -174,7 +175,8 @@
                     :react-key item-id})))
           sort)))))
 
-(defn zortable [{:keys [sort items] :as data} owner opts]
+(defn zortable
+  [{:keys [sort items] :as data} owner {:keys [disabled? pub-ch] :as opts}]
   (letfn [(init-state []
             {:start-pos []
              :box {}})
@@ -207,8 +209,11 @@
         (will-mount [_]
           (go-loop []
             (let [state (om/get-state owner) 
-                  [tag {:keys [eid pos]}] (<! (get-local :ch))]
+                  msg (<! (get-local :ch))
+                  [tag {:keys [eid pos]}] msg]
               (when (some? tag)
+                (when (some? pub-ch)
+                  (put! pub-ch msg))
                 (case tag
                   :start-drag
                   (do (doto js/window
