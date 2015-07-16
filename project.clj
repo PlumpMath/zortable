@@ -1,4 +1,4 @@
-(defproject zortable "0.1.3-SNAPSHOT"
+(defproject zortable "0.1.2-SNAPSHOT"
   :description "Reusable sortable om component"
   :url "https://github.com/bensu/zortable"
   :license {:name "Eclipse Public License"
