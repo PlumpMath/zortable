@@ -10,8 +10,8 @@
                  [org.omcljs/om "0.9.0" :exclusions [cljsjs/react]]]
 
   :plugins [[lein-cljsbuild "1.0.5"]
-            [lein-doo "0.1.3-SNAPSHOT"]
-            [lein-figwheel "0.3.2"]]
+            [lein-doo "0.1.4-SNAPSHOT"]
+            [lein-figwheel "0.3.7"]]
 
   :source-paths ["src"]
 
