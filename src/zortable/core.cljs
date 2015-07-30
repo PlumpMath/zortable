@@ -3,6 +3,7 @@
   (:require-macros [cljs.core.async.macros :refer [go go-loop]])
   (:require [clojure.set :as set]
             [cljs.core.async :as async :refer [>! <! chan put!]]
+            [goog.dom :as gdom]
             [om.core :as om :include-macros true]
             [om.dom :as dom :include-macros true]
             [goog.style :as style]
@@ -49,7 +50,7 @@
 (defn element-inside?
   "Finds if an element is inside another element with the specified class"
   [class element]
-  (some? (.closest element (str "." class))))
+  (some? (gdom/getAncestorByClass element class)))
 
 (defn eid->box
   "Finds the internal eid from the user given id"
