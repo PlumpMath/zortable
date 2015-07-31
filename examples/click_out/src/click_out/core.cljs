@@ -22,12 +22,14 @@
     (display-name [_] "Box")
     om/IDidMount
     (did-mount [this]
-      (click/install-in! ["other-box"] #(z/handle this [:click-else %]))
-      (click/install-out! ["box"] #(z/handle this [:click-out %])))
+      (om/set-state! owner :listen-in-key
+        (click/install-in! ["other-box"] #(z/handle this [:click-else %])))
+      (om/set-state! owner :listen-out-key
+        (click/install-out! ["box"] #(z/handle this [:click-out %]))))
     om/IWillUnmount
     (will-unmount [this]
-      (click/uninstall-in! ["other-box"] #(z/handle this [:click-else %]))
-      (click/uninstall-out! ["box"] #(z/handle this [:click-out %])))
+      (click/uninstall! (om/get-state owner :listen-in-key))
+      (click/uninstall! (om/get-state owner :listen-out-key)))
     om/IRender
     (render [this]
       (dom/div #js {:className "box"

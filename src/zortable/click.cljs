@@ -44,15 +44,5 @@
   [sel f]
   (install! true sel f))
 
-;; Uninstalling closures might not be reliable. It'd be better to
-;; assing ids and have an internal id system.
-
-(defn uninstall! [in? sel f]
-  (events/unlisten js/window EventType.CLICK
-    (partial click-handler in? sel f) true))
-
-(defn uninstall-in! [sel f]
-  (uninstall! true sel f))
-
-(defn uninstall-out! [sel f]
-  (uninstall! false sel f))
+(defn uninstall! [key]
+  (events/unlistenByKey key))
