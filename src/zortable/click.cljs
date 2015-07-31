@@ -15,7 +15,8 @@
       (when (ff true)
         (Event.stopPropagation e)
         (Event.preventDefault e))
-      (f e))))
+      (f e)
+      nil)))
 
 (defn install! [in? sel f]
   (events/listen js/window EventType.CLICK
