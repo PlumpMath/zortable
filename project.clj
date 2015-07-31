@@ -20,6 +20,8 @@
   :profiles {:dev {:dependencies [[cljs-react-test "0.1.3-SNAPSHOT"]
                                   [cljsjs/react-with-addons "0.13.3-0"]]}}
 
+  :figwheel {:css-dirs ["resources/public/css"]}
+
   :cljsbuild
   {:builds
    [{:id "test"
@@ -31,20 +33,24 @@
     {:id "boxes"
      :source-paths ["src" "examples/boxes"]
      :figwheel { :on-jsload "boxes.core/on-js-reload" }
-     :compiler
-     {:main boxes.core 
-      :asset-path "js/compiled/boxes"
-      :output-to "resources/public/js/compiled/main.js"
-      :output-dir "resources/public/js/compiled/boxes"
-      :source-map-timestamp true}}
+     :compiler {:main boxes.core 
+                :asset-path "js/compiled/boxes"
+                :output-to "resources/public/js/compiled/main.js"
+                :output-dir "resources/public/js/compiled/boxes"
+                :source-map-timestamp true}}
     {:id "editable"
      :source-paths ["src" "examples/editable"]
      :figwheel { :on-jsload "editable.core/on-js-reload" }
-     :compiler
-     {:main editable.core 
-      :asset-path "js/compiled/editable"
-      :output-to "resources/public/js/compiled/main.js"
-      :output-dir "resources/public/js/compiled/editable"
-      :source-map-timestamp true}}]}
-
-  :figwheel {:css-dirs ["resources/public/css"]})
+     :compiler {:main editable.core 
+                :asset-path "js/compiled/editable"
+                :output-to "resources/public/js/compiled/main.js"
+                :output-dir "resources/public/js/compiled/editable"
+                :source-map-timestamp true}}
+    {:id "click-out"
+     :source-paths ["src" "examples/click_out"]
+     :figwheel { :on-jsload "click-out.core/on-js-reload" }
+     :compiler {:main click-out.core 
+                :asset-path "js/compiled/click_out"
+                :output-to "resources/public/js/compiled/main.js"
+                :output-dir "resources/public/js/compiled/click_out"
+                :source-map-timestamp true}}]})
