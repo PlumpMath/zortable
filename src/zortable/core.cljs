@@ -90,7 +90,6 @@
     (drag-start [_ state {:keys [eid pos]}]
       (let [box (eid->box eid)]
         (assoc state
-          :start-pos pos
           :box (assoc box
                  :eid eid
                  :id (eid->id (:id->eid state) eid) 
@@ -104,8 +103,7 @@
     (drag-stop [_ state e]
       (-> state
         (update :ids (partial sort-by-pos (:id->eid state)))
-        (assoc :box {})
-        (assoc :start-pos [])))))
+        (assoc :box {})))))
 
 
 ;; ====================================================================== 
@@ -140,6 +138,7 @@
   [(.-clientX e) (.-clientY e)])
 
 (defn sort-wrapper [item owner opts]
+  {:pre [(fn? (:handler opts))]}
   (reify
     om/IDisplayName
     (display-name [_] "SortWrapper")
@@ -150,7 +149,7 @@
                     (when-not (:disabled? opts)
                       (fn [e]
                         (when (element-inside? (:drag-class opts) (.-target e))
-                          (put! (:ch opts) [:start-drag {:eid eid
+                          ((:handler opts) [:start-drag {:eid eid
                                                          :id id
                                                          :pos (event->pos e)}])
                           nil)))
@@ -187,8 +186,7 @@
 (defn zortable
   [{:keys [sort items] :as data} owner {:keys [disabled? pub-ch] :as opts}]
   (letfn [(init-state []
-            {:start-pos []
-             :box {}})
+            {:box {}})
           (next-state! [state]
             (om/update-state! owner #(merge % state)))
           (get-local [kw]
@@ -201,50 +199,43 @@
         om/IDisplayName
         (display-name [_] "Zortable")
         om/IInitState
-        (init-state [_]
+        (init-state [this]
           (let [ch (chan)]
             (letfn [(mouse-listen [tag e]
-                      (put! ch [tag {:pos (event->pos e)}]))]
+                      (handle this [tag {:pos (event->pos e)}]))]
               (merge
                 ;; State present during the whole lifecycle
                 {:ids (om/value sort)
                  :id->eid (new-ids @sort) 
-                 :ch ch
                  :listeners [(partial mouse-listen :drag)
                              (partial mouse-listen :stop-drag)]}
                 ;; State present during drag
+                ;; should go into the box itself
                 (init-state)))))
-        om/IWillMount
-        (will-mount [_]
-          (let [d (free-drag)]
-            (go-loop []
-              (let [state (om/get-state owner) 
-                    msg (<! (get-local :ch))
-                    [tag e] msg]
-                (when (some? tag)
-                  (when (some? pub-ch)
-                    (put! pub-ch msg))
-                  (case tag
-                    :start-drag
-                    (do (doto js/window
-                          (events/listen EventType.MOUSEMOVE
-                            (get-local [:listeners 0]))
-                          (events/listen EventType.MOUSEUP
-                            (get-local [:listeners 1])))
-                        (next-state! (drag-start d (om/get-state owner) e)))
-                    :drag (next-state! (drag-move d state e))
-                    :stop-drag (do (doto js/window
-                                     (events/unlisten EventType.MOUSEMOVE
-                                       (get-local [:listeners 0]))
-                                     (events/unlisten EventType.MOUSEUP
-                                       (get-local [:listeners 1])))
-                                   (let [state' (drag-stop d state e)]
-                                     (next-state! state')
-                                     (om/update! sort (:ids state')))))
-                  (recur))))))
-        om/IWillUnmount
-        (will-unmount [_]
-          (async/close! (om/get-state owner :ch)))
+        IHandle
+        (handle [_ [tag e]]
+          (when (some? pub-ch)
+            (put! pub-ch [tag e]))
+          (let [d (free-drag)
+                state (om/get-state owner)]
+            (next-state!
+              (case tag
+                :start-drag
+                (do (doto js/window
+                      (events/listen EventType.MOUSEMOVE
+                        (get-local [:listeners 0]))
+                      (events/listen EventType.MOUSEUP
+                        (get-local [:listeners 1])))
+                    (drag-start d (om/get-state owner) e))
+                :drag (drag-move d state e)
+                :stop-drag (do (doto js/window
+                                 (events/unlisten EventType.MOUSEMOVE
+                                   (get-local [:listeners 0]))
+                                 (events/unlisten EventType.MOUSEUP
+                                   (get-local [:listeners 1])))
+                               (let [state' (drag-stop d state e)]
+                                 (om/update! sort (:ids state'))
+                                 state'))))))
         om/IWillReceiveProps
         (will-receive-props [_ {:keys [items sort]}]
           (assert (= (count items) (count sort))
@@ -258,7 +249,7 @@
                          (merge (new-ids to-create-ids)))]
               (next-state! {:ids @sort :id->eid eids}))))
         om/IRenderState
-        (render-state [_ {:keys [ch ids id->eid box] :as state}]
+        (render-state [this {:keys [ids id->eid box] :as state}]
           (let [moving-id (:id box)]
             (apply dom/div #js {:className "zort-list"
                                 :style zortable-styles} 
@@ -272,7 +263,7 @@
                          (om/build sort-filler {:item item :box box}
                            {:opts opts})
                          (om/build sort-wrapper item
-                           {:opts (assoc opts :ch ch)
+                           {:opts (assoc opts :handler (partial handle this)) 
                             :init-state {:eid eid :id item-id}
                             :react-key item-id}))))
                 ids))))))))
