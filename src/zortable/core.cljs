@@ -76,35 +76,37 @@
 ;; ====================================================================== 
 ;; Drag Events
 
+(defprotocol IDrag
+  (drag-start [this state event])
+  (drag-move [this state event])
+  (drag-stop [this state event]))
+
 (defn dragging? [state]
   (not (empty? (:box state))))
 
-(defn start-drag
-  "Finds the box to be dragged and returns the updated state"
-  [eid pos state]
-  (let [box (eid->box eid)]
-    (assoc state
-      :start-pos pos
-      :box (assoc box
-             :eid eid
-             :id (eid->id (:id->eid state) eid) 
-             :offset (box-offset pos box)))))
+(defn free-drag []
+  (reify
+    IDrag
+    (drag-start [_ state {:keys [eid pos]}]
+      (let [box (eid->box eid)]
+        (assoc state
+          :start-pos pos
+          :box (assoc box
+                 :eid eid
+                 :id (eid->id (:id->eid state) eid) 
+                 :offset (box-offset pos box)))))
+    (drag-move [_ state {:keys [pos]}]
+      (-> state
+        (update :box (fn [box]
+                       (let [[left top] (map - pos (:offset box))]
+                         (assoc box :left left :top top))))
+        (update :ids (partial sort-by-pos (:id->eid state)))))
+    (drag-stop [_ state e]
+      (-> state
+        (update :ids (partial sort-by-pos (:id->eid state)))
+        (assoc :box {})
+        (assoc :start-pos [])))))
 
-(defn drag
-  "Updates the state by interpreting what the new position means for each box."
-  [pos state]
-  (letfn [(drag-to-pos [box]
-            (let [[left top] (map - pos (:offset box))]
-              (assoc box :left left :top top)))]
-    (-> state
-      (update :box drag-to-pos)
-      (update :ids (partial sort-by-pos (:id->eid state))))))
-
-(defn stop-drag [state]
-  (-> state
-    (update :ids (partial sort-by-pos (:id->eid state)))
-    (assoc :box {})
-    (assoc :start-pos [])))
 
 ;; ====================================================================== 
 ;; Wrapper Components
@@ -214,31 +216,32 @@
                 (init-state)))))
         om/IWillMount
         (will-mount [_]
-          (go-loop []
-            (let [state (om/get-state owner) 
-                  msg (<! (get-local :ch))
-                  [tag {:keys [eid pos]}] msg]
-              (when (some? tag)
-                (when (some? pub-ch)
-                  (put! pub-ch msg))
-                (case tag
-                  :start-drag
-                  (do (doto js/window
-                        (events/listen EventType.MOUSEMOVE
-                          (get-local [:listeners 0]))
-                        (events/listen EventType.MOUSEUP
-                          (get-local [:listeners 1])))
-                      (next-state! (start-drag eid pos (om/get-state owner))))
-                  :drag (next-state! (drag pos state))
-                  :stop-drag (do (doto js/window
-                                   (events/unlisten EventType.MOUSEMOVE
-                                     (get-local [:listeners 0]))
-                                   (events/unlisten EventType.MOUSEUP
-                                     (get-local [:listeners 1])))
-                                 (let [state' (stop-drag state)]
-                                   (next-state! state')
-                                   (om/update! sort (:ids state')))))
-                (recur)))))
+          (let [d (free-drag)]
+            (go-loop []
+              (let [state (om/get-state owner) 
+                    msg (<! (get-local :ch))
+                    [tag e] msg]
+                (when (some? tag)
+                  (when (some? pub-ch)
+                    (put! pub-ch msg))
+                  (case tag
+                    :start-drag
+                    (do (doto js/window
+                          (events/listen EventType.MOUSEMOVE
+                            (get-local [:listeners 0]))
+                          (events/listen EventType.MOUSEUP
+                            (get-local [:listeners 1])))
+                        (next-state! (drag-start d (om/get-state owner) e)))
+                    :drag (next-state! (drag-move d state e))
+                    :stop-drag (do (doto js/window
+                                     (events/unlisten EventType.MOUSEMOVE
+                                       (get-local [:listeners 0]))
+                                     (events/unlisten EventType.MOUSEUP
+                                       (get-local [:listeners 1])))
+                                   (let [state' (drag-stop d state e)]
+                                     (next-state! state')
+                                     (om/update! sort (:ids state')))))
+                  (recur))))))
         om/IWillUnmount
         (will-unmount [_]
           (async/close! (om/get-state owner :ch)))
