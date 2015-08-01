@@ -4,9 +4,9 @@
   (:require [clojure.set :as set]
             [cljs.core.async :as async :refer [>! <! chan put!]]
             [goog.dom :as gdom]
+            [goog.style :as style]
             [om.core :as om :include-macros true]
             [om.dom :as dom :include-macros true]
-            [goog.style :as style]
             [goog.events :as events]
             [zortable.util :as u]))
 
