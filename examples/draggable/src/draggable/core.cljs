@@ -6,8 +6,10 @@
               [om.core :as om :include-macros true]
               [om.dom :as dom :include-macros true]))
 
-(defprotocol IHandle
-  (handle [_ e]))
+(defprotocol IStep
+  (get-owner [this])
+  (get-signal [this])
+  (step [this state event]))
 
 (defprotocol IDrag
   (drag-start [this state event])
@@ -44,13 +46,100 @@
     IDrag
     (drag-start [_ _ {:keys [node pos]}]
       (let [box (add-pos {:node node})]
-        (assoc box :offset (box-offset pos box))))
+        (assoc box
+          :offset (box-offset pos box)
+          :dragging? true)))
     (drag-move [_ box {:keys [pos]}]
       (let [[left top] (map - pos (:offset box))]
         (assoc box :left left :top top)))
-    (drag-stop [_ _ _]
-      (println "stop")
-      {})))
+    (drag-stop [_ box _]
+      (assoc box :dragging? false))))
+
+(defonce installed? (atom {:listener-move false
+                           :listener-up false}))
+
+(defn install-move! [owner h]
+  (when-not (:listener-move @installed?)
+    (swap! installed? #(assoc % :listener-move true))
+    (om/set-state! owner :listener-move
+      (events/listen js/window EventType.MOUSEMOVE h))))
+
+(defn install-up! [owner h]
+  (when-not (:listener-up @installed?)
+    (swap! installed? #(assoc % :listener-up true))
+    (om/set-state! owner :listener-up
+      (events/listen js/window EventType.MOUSEUP h))))
+
+(defn uninstall! [owner]
+  (doseq [k [:listener-move :listener-up]]
+    (swap! installed? #(assoc % k false))
+    (events/unlistenByKey (om/get-state owner k))))
+
+;; Should consider the three elements.
+(defn handle [this action]
+  {:pre [(satisfies? IStep this)]}
+  (let [owner (get-owner this)
+        state (om/get-state owner)
+        state' (step this state action)]
+    (when (and (some? state') (not= state state'))
+      (om/set-state! owner state')
+      (when-let [signal (get-signal this)]
+        (reset! signal state')))))
+
+(defn signal-map [owner]
+  (.-z$signals owner))
+
+(defn add-signal! [owner k z]
+  (set! (.-z$signals owner) (merge (signal-map owner) {k z})))
+
+(defn signal [this k]
+  (let [owner om/*parent*]
+    (or (get (signal-map owner) k)
+      (let [z (atom {})]
+        (add-watch z k (fn [_ _ _ state']
+                         (om/update-state! owner identity)
+                         (when (satisfies? IStep this)
+                           (handle this [k state']))))
+        (add-signal! owner k z)
+        z))))
+
+(defn draggable [item owner {:keys [drag-class z view]}]
+  (reify
+    om/IDisplayName (display-name [_] "Box")
+    om/IInitState
+    (init-state [_]
+      {:dragger (free-drag)
+       :box {:dragging? false
+             :top nil
+             :left nil}})
+    IStep
+    (get-owner [this] owner)
+    (get-signal [this] z)
+    (step [this state [tag e]]
+      (let [{:keys [box dragger]} state]
+        (assoc state :box
+          (case tag
+            :drag/start (drag-start dragger box e)
+            :drag/move (drag-move dragger box e)
+            :drag/stop (drag-stop dragger box e)))))
+    om/IRenderState
+    (render-state [this {:keys [box]}]
+      (dom/div #js {:style #js {:position "absolute"
+                                :userSelect "none"
+                                :zIndex 1
+                                :top (:top box)
+                                :left (:left box)}
+                    :onMouseDown
+                    (fn [e]
+                      (when (element-inside? drag-class (.-target e))
+                        (install-move! owner
+                          #(handle this [:drag/move {:pos (event->pos %)}]) )
+                        (install-up! owner
+                          #(do (uninstall! owner)
+                               (handle this [:drag/stop {:pos (event->pos %)}])))
+                        (handle this [:drag/start {:node (om/get-node owner)
+                                                   :pos (event->pos e)}])))}
+        (om/build view item)))))
 
 ;; ====================================================================== 
 ;; Example
@@ -60,85 +149,64 @@
 (defn pos->hue [[x y]]
   (mod (+ (/ x 2) (/ y 2)) 360))
 
-(def box-width 50)
-(def box-height 20)
+(def box-side 50)
 
 (defn build-box [id]
   {:item-id id 
-   :width box-width
-   :height (+ box-height (* 10 id)) 
+   :width box-side 
+   :height box-side 
    :hue (pos->hue [(rand-int 500) (rand-int 500)])})
 
 (defonce app-state
-  (atom {:item (build-box 1)}))
+  (atom {:items (mapv build-box (range 2))}))
 
 (defn box-color [box]
   (let [opacity 1]
     (str "hsla(" (:hue box) ",50%,50%," opacity ")")))
 
-(defn install-move! [owner h]
-  (om/set-state! owner :listener-move
-    (events/listen js/window EventType.MOUSEMOVE h)))
+(defn render-box [item _]
+  (om/component
+    (dom/div #js {:className "box"
+                  :style #js {:backgroundColor (box-color item)
+                              :height (:height item)
+                              :position "relative"
+                              :width (:width item)
+                              :top (:top item)
+                              :left (:left item)}})))
+(defn mean [xs]
+  (/ (reduce + xs) (count xs)))
 
-(defn install-up! [owner h]
-  (om/set-state! owner :listener-up
-    (events/listen js/window EventType.MOUSEUP h)))
+(defn wire! [component props address opts]
+  (om/build component props opts))
 
-(defn uninstall! [owner]
-  (doseq [k [:listener-move :listener-up]]
-    (events/unlistenByKey (om/get-state owner k))))
-
-(defn render-item [item owner opts]
+(defn guidelines [items owner]
   (reify
-    om/IDisplayName (display-name [_] "Box")
-    om/IInitState
-    (init-state [_] {:dragger (free-drag)})
-    IHandle
-    (handle [this [tag e]]
-      (let [d (om/get-state owner :dragger) 
-            box (om/get-state owner :box)]
-        (om/set-state! owner :box
-          (case tag
-            :start-drag
-            (do (install-move! owner
-                  #(handle this [:drag {:pos (event->pos %)}]))
-                (install-up! owner
-                  #(handle this [:stop-drag {:pos (event->pos %)}]))
-                (drag-start d box e))
-            :drag (drag-move d box e)
-            :stop-drag (do (uninstall! owner)
-                           (drag-stop d box e))))))
     om/IRenderState
-    (render-state [this {:keys [box]}]
-      (dom/div #js {:style #js {:position "absolute"
-                                :zIndex 1
-                                :top (:top box)
-                                :left (:left box)
-                                ;; =============
-                                :backgroundColor (box-color item)
-                                :height (:height item)
-                                :width 100}
-                    :className "box"
-                    :onMouseDown
-                    (fn [e]
-                      (when (element-inside? (:drag-class opts) (.-target e))
-                        (handle this [:start-drag {:node (om/get-node owner)
-                                                   :pos (event->pos e)}])))}))))
+    (render-state [this state]
+      (let [boxes (map #(:box @(signal this [:draggable (:item-id %)])) items)]
+        (dom/div nil
+          (om/build render-box {:height box-side 
+                                :width 10
+                                :top (mean (map :top boxes))
+                                :hue 100
+                                :left 0})
+          (om/build render-box {:height 10
+                                :width box-side 
+                                :top 0
+                                :hue 100
+                                :left (mean (map :left boxes))})
+          (apply dom/div nil
+            (map (fn [ item]
+                   (om/build draggable item 
+                     {:opts {:drag-class "box"
+                             :z (signal this [:draggable (:item-id item)]) 
+                             :view render-box}}))
+              items)))))))
 
 (defn main [data owner]
-  (reify
-    om/IRender
-    (render [_]
-      (dom/div nil 
-        (dom/h1 nil "draggable")
-        (om/build render-item (:item data) {:opts {:drag-class "box"}})))))
+  (om/component
+    (dom/div #js {:style #js {:userSelect "none"}} 
+      (om/build guidelines (:items data)))))
 
 (om/root main app-state
   {:target (. js/document (getElementById "app"))})
-
-(defn on-js-reload []
-  ;; optionally touch your app-state to force rerendering depending on
-  ;; your application
-  ;; (swap! app-state update-in [:__figwheel_counter] inc)
-) 
-

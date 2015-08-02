@@ -56,8 +56,8 @@
                 :source-map-timestamp true}}
     {:id "draggable"
      :source-paths ["src" "examples/draggable"]
-     :figwheel { :on-jsload "draggable.core/on-js-reload" }
-     :compiler {:main draggable.core 
+     :figwheel true 
+     :compiler {:main "draggable.core" 
                 :asset-path "js/compiled/draggable"
                 :output-to "resources/public/js/compiled/main.js"
                 :output-dir "resources/public/js/compiled/draggable"
