@@ -2,6 +2,7 @@
     (:require [om.core :as om :include-macros true]
               [om.dom :as dom :include-macros true]
               [zortable.core :as z]
+              [zortable.zortable :as zz]
               [zortable.draggable :as zd]))
 
 ;; ====================================================================== 
@@ -71,7 +72,7 @@
 
 (defn main [data owner]
   (om/component
-    (dom/div #js {:style #js {:userSelect "none"}} 
+    (dom/div #js {:style zz/zortable-styles} 
       (om/build guidelines (:items data)))))
 
 ;; TODO: use no-local
