@@ -134,76 +134,89 @@
       (apply dom/div #js {:className "zort-list"
                           :style zortable-styles} 
         (map (fn [item-id]
-               (let [item (items item-id)]
-                 (om/build sort-wrapper item
-                   {:opts opts :init-state {:id item-id}
-                    :react-key item-id})))
+               (om/build (:box-view opts) (items item-id)
+                 {:opts opts :init-state {:id item-id}}))
           sort)))))
 
-(declare with-filler)
+;; Needs to be a separate component:
+;; https://facebook.github.io/react/docs/create-fragment.html
+;; When reordering a 'set' of children, you either wrap them or
+;; provide a key-fragment
 
-(defn zortable
-  [{:keys [sort items] :as data} owner {:keys [disabled? pub-ch] :as opts}]
-  (letfn [(next-state! [state]
-            (om/update-state! owner #(merge % state)))
-          (get-local [kw]
-            (om/get-state owner kw))]
-    (if (:disabled? opts)
-      (disabled-zortable data owner opts)
-      (reify
-        om/IDisplayName
-        (display-name [_] "Zortable")
-        om/IInitState
-        (init-state [this]
-          {:ids (om/value sort)
-           :drag/id nil
-           :id->eid (new-ids @sort)})
-        z/IWire
-        (get-owner [_] owner)
-        (get-signal [_] nil)
-        z/IStep
-        (step [_ state [[_ id] e]]
-          (-> state
-            (update :ids (partial sort-by-pos (:id->eid state)))
-            (assoc :drag/id (if (zd/dragging? (:box e)) id))))
-        om/IWillReceiveProps
-        (will-receive-props [_ {:keys [items sort]}]
-          (assert (= (count items) (count sort))
-            "Length of sort and items don't match")
-          (when-not (= (count sort) (count (om/get-state owner :ids)))
-            (let [old-ids (set (om/get-state owner :ids))
-                  future-ids (set @sort)
-                  to-create-ids (set/difference future-ids old-ids)
-                  to-delete-ids (set/difference old-ids future-ids)
-                  eids (->> (apply dissoc (get-local :id->eid) to-delete-ids)
-                         (merge (new-ids to-create-ids)))]
-              (next-state! {:ids @sort :id->eid eids}))))
-        om/IRenderState
-        (render-state [this {:keys [ids id->eid :drag/id] :as state}]
-          (let [box (->> ids
-                      (map #(:box @(z/signal this [:draggable %])))
-                      (filter zd/dragging?)
-                      first)]
-            (apply dom/div #js {:className "zort-list"
-                                :style zortable-styles} 
-              (map (fn [item-id]
-                     (let [eid (id->eid item-id)
-                           item (items item-id)]
-                       (om/build with-filler {:item item :eid eid
-                                              :id id :item-id item-id} 
-                         {:opts {:z (z/signal this [:draggable item-id])
-                                 :dragger (zd/snapped-drag)
-                                 :drag-class (:drag-class opts) 
-                                 :view (:box-view opts)
-                                 :box-filler (:box-filler opts)}
-                          :react-key eid})))
-                ids))))))))
-
-(defn with-filler [{:keys [eid id item-id item]} owner opts]
+(defn with-filler
+  "Wrapper over draggable to render a filler while it's dragging"
+  [{:keys [eid id item-id item]} owner opts]
   (om/component
     (dom/div nil
-      (om/build zd/draggable (assoc item :drag/id eid)
-        {:opts opts :react-key eid})
+      (om/build zd/draggable (assoc item :drag/id eid) {:opts opts})
       (when (= item-id id)
-        (om/build sort-filler {:item item}
-          {:opts opts :react-key "filler"})))))
+        (om/build sort-filler {:item item} {:opts opts})))))
+
+(defn zortable
+  "Given a set of items and their sort order, it allows the user
+   to be sort them via dragging.
+
+   (om/build zortable data opts)
+
+   data -
+    :items {item-id item-data}
+    :sort [item-ids]
+   opts -
+    :drag-class - className to click to start the dragging,
+                  should be rendered by box-view
+    :box-view - component that renders item-data
+    :box-filler - component that fills the void left by a dragging object"
+  [{:keys [sort items] :as data} owner opts]
+  (if (:disabled? opts)
+    (disabled-zortable data owner opts)
+    (reify
+      om/IDisplayName
+      (display-name [_] "Zortable")
+      om/IInitState
+      (init-state [this]
+        {:ids (om/value sort)
+         :drag/id nil
+         :id->eid (new-ids @sort)})
+      z/IWire
+      (get-owner [_] owner)
+      (get-signal [_] nil)
+      z/IStep
+      (step [_ state [[_ id] e]]
+        (-> state
+          (update :ids (partial sort-by-pos (:id->eid state)))
+          (assoc :drag/id (if (zd/dragging? (:box e)) id))))
+      om/IWillReceiveProps
+      (will-receive-props [_ {:keys [items sort]}]
+        (assert (= (count items) (count sort))
+          "Length of sort and items don't match")
+        (when-not (= (count sort) (count (om/get-state owner :ids)))
+          (let [old-ids (set (om/get-state owner :ids))
+                future-ids (set @sort)
+                to-create-ids (set/difference future-ids old-ids)
+                to-delete-ids (set/difference old-ids future-ids)
+                eids (->> to-delete-ids
+                       (apply dissoc (om/get-state owner :id->eid))
+                       (merge (new-ids to-create-ids)))]
+            (om/update-state! owner #(merge % {:ids @sort :id->eid eids})))))
+      om/IRenderState
+      (render-state [this {:keys [ids id->eid :drag/id] :as state}]
+        (let [box (->> ids
+                    (map #(:box @(z/signal this [:draggable %])))
+                    (filter zd/dragging?)
+                    first)]
+          (apply dom/div #js {:className "zort-list"
+                              :style zortable-styles} 
+            (map (fn [item-id]
+                   (let [eid (id->eid item-id)
+                         item (items item-id)]
+                     (om/build with-filler {:item item :eid eid
+                                            :id id :item-id item-id} 
+                       {:opts {:z (z/signal this [:draggable item-id])
+                               :dragger (zd/snapped-drag)
+                               :drag-class (:drag-class opts) 
+                               :view (:box-view opts)
+                               :box-filler (:box-filler opts)}
+                        ;; Necessary for sorting
+                        :react-key eid})))
+              ids)))))))
+
