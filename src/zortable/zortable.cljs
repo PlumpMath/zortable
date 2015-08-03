@@ -144,7 +144,8 @@
                                :dragger (zd/snapped-drag)
                                :drag-class (:drag-class opts) 
                                :view (:box-view opts)
-                               :box-filler (:box-filler opts)}
+                               :box-filler (:box-filler opts)
+                               :opts (:opts opts)}
                         ;; Necessary for sorting
                         :react-key eid})))
               ids)))))))

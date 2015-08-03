@@ -31,6 +31,11 @@
       (when-let [signal (get-signal this)]
         (reset! signal state')))))
 
+(defn raise! [this action]
+  {:pre [(satisfies? IWire this)]}
+  (let [z (get-signal this)]
+    (reset! z action)))
+
 (defn signal-map [owner]
   (gobj/get owner "z$signals"))
 

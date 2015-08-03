@@ -105,7 +105,7 @@
     (swap! installed? #(assoc % k false))
     (events/unlistenByKey (om/get-state owner k))))
 
-(defn draggable [item owner {:keys [dragger drag-class view z]}]
+(defn draggable [item owner {:keys [dragger drag-class view z] :as opts}]
   {:pre [(fn? view)]}
   (reify
     om/IDisplayName
@@ -146,5 +146,4 @@
                                (z/handle this [:drag/stop {:pos (u/event->pos %)}])))
                         (z/handle this [:drag/start {:node (om/get-node owner)
                                                      :pos (u/event->pos e)}])))}
-        (om/build view item)))))
-
+        (om/build view item {:opts (:opts opts)})))))

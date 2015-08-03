@@ -3,8 +3,9 @@
   (:require [cljs.core.async :as async :refer (<! >! chan put!)]
             [om.core :as om :include-macros true]
             [om.dom :as dom :include-macros true]
+            [zortable.core :as z]
             [zortable.util :as u]
-            [zortable.zortable :as z :refer [zortable]]))
+            [zortable.zortable :as zz :refer [zortable]]))
 
 ;; ====================================================================== 
 ;; Components
@@ -31,30 +32,31 @@
   "Given an item with a :val-key pointing to a string, it displays it
    as normal text and allows editing when clicking on it. It exits edit
    mode onBlur or by pressing Enter (which adds a new empty item right after)."
-  [item owner {:keys [edit-ch val-key id-key]}]
+  [item owner {:keys [z val-key id-key]}]
   (reify
     om/IDisplayName
     (display-name [_] "Editable")
+    z/IWire
+    (get-owner [_] owner)
+    (get-signal [_] z)
     om/IRender
-    (render [_]
-      (letfn [(raise! [tag data]
-                (go (>! edit-ch [tag data])))]
-        (let [id (get item id-key)]
-          (dom/div #js {:className "editable"} 
-            (dom/i #js {:className (str item-drag-class " content icon")})
-            (dom/i #js {:className "close icon"
-                        :onClick (fn [_] (raise! :delete id))})
-            (dom/input
-              #js {:placeholder "New item" 
-                   :type "text"
-                   :ref "input"
-                   :autoFocus (:focus? item)
-                   :value (get item val-key)
-                   :onFocus (fn [_] (raise! :focus id))
-                   :onChange #(om/update! item val-key (.. % -target -value))
-                   :onKeyDown #(when (= (.-key %) "Enter")
-                                 (raise! :enter id))
-                   :onBlur (fn [_] (raise! :blur id))})))))
+    (render [this]
+      (let [id (get item id-key)]
+        (dom/div #js {:className "editable"} 
+          (dom/i #js {:className (str item-drag-class " content icon")})
+          (dom/i #js {:className "close icon"
+                      :onClick (fn [_] (z/raise! this [:delete id]))})
+          (dom/input
+            #js {:placeholder "New item" 
+                 :type "text"
+                 :ref "input"
+                 :autoFocus (:focus? item)
+                 :value (get item val-key)
+                 :onFocus (fn [_] (z/raise! this [:focus id]))
+                 :onChange #(om/update! item val-key (.. % -target -value))
+                 :onKeyDown #(when (= (.-key %) "Enter")
+                               (z/raise! this [:enter id]))
+                 :onBlur (fn [_] (z/raise! this [:blur id]))}))))
     om/IDidMount
     (did-mount [_]
       (when (:focus? item)
@@ -71,35 +73,34 @@
     (display-name [_] "ListMaker")
     om/IInitState
     (init-state [_]
-      {:edit-ch (chan)
-       :z-ch (chan)
-       :d-id nil ;; dragging-id
+      {:z-ch (chan) ;; listens for draggable events
+       :d-id nil    ;; dragging-id
        :focus-id (if-not (empty? sort) (last sort))})
-    om/IWillMount 
-    (will-mount [_]
-      (letfn [(focus-on [id]
-                (om/set-state! owner :focus-id id))
-              (delete-item [id]
+    z/IWire
+    (get-owner [_] owner)
+    (get-signal [_] nil)
+    z/IStep
+    (step [_ state [path [tag id]]]
+      (letfn [(delete-item [id]
                 (when-not (= 1 (count @sort))
                   (om/transact! items #(dissoc % id))
-                  (om/transact! sort (comp vec (partial remove #(= id %))))))
-              (add-item [idx]
-                (let [id (u/guid)]
-                  (focus-on id)
-                  (om/transact! items #(assoc % id {id-key id val-key ""}))
-                  (om/transact! sort (partial u/insert-at idx id))))]
-        (go-loop []
-          (let [[tag id] (<! (om/get-state owner :edit-ch))]
-            (when (some? tag)
-              (case tag
-                :enter (add-item (inc (u/find-index id @sort)))
-                :focus (focus-on id) 
-                :blur  (when (and (empty? (get-in @items [id val-key]))
-                               (nil? (om/get-state owner :d-id)))
-                         (delete-item id)) 
-                :delete (delete-item id))
-              (recur))))
-        (go-loop []
+                  (om/transact! sort (comp vec (partial remove #(= id %))))))]
+        (case tag
+          :enter (let [idx (inc (u/find-index id @sort))
+                       id (u/guid)]
+                   (om/transact! items #(assoc % id {id-key id val-key ""}))
+                   (om/transact! sort (partial u/insert-at idx id))
+                   (assoc state :focus-id id))
+          :focus (assoc state :focus-id id) 
+          :blur  (when (and (empty? (get-in @items [id val-key]))
+                            (nil? (om/get-state owner :d-id)))
+                   (delete-item id)
+                   state) 
+          :delete (do (delete-item id)
+                      state))))
+    om/IWillMount 
+    (will-mount [_]
+      #_(go-loop []
           (let [[tag {:keys [id]}] (<! (om/get-state owner :z-ch))]
             (when (some? tag)
               (case tag
@@ -112,13 +113,12 @@
                       (delete-item rid))
                     (om/set-state! owner :d-id nil))
                 nil)
-              (recur))))))
+              (recur)))))
     om/IWillUnmount
     (will-unmount [_]
-      (async/close! (om/get-state owner :edit-ch))
       (async/close! (om/get-state owner :z-ch)))
     om/IRenderState
-    (render-state [_ {:keys [z-ch edit-ch focus-id]}]
+    (render-state [this {:keys [z-ch focus-id]}]
       (dom/div nil
         (apply dom/div #js {:className "list-maker" :ref "ele-list"}
           (let [items' (->> items
@@ -126,16 +126,18 @@
                                 [k (assoc v :focus? (= focus-id k))]))
                          (into {}))]
             (if-not (:disabled? opts)
-              [(om/build zortable {:sort sort :items items'} 
+              [(om/build zz/zortable {:sort sort :items items'} 
                  {:opts {:box-view editable 
                          :id-key :item-id
                          :drag-class item-drag-class 
                          :box-filler render-filler
-                         :pub-ch z-ch
-                         :opts (assoc opts :edit-ch edit-ch)}})]
+                         :opts {:z (z/signal this :editable)
+                                :val-key val-key
+                                :id-key id-key}}})]
               (map #(om/build editable (get items' %)
-                      {:opts (assoc opts :edit-ch edit-ch)
+                      {:opts {:z (z/signal this :editable)}
                        :key id-key})
                 sort))))
         (if (some? add-node)
-          (om/build add-node (last sort) {:opts {:edit-ch edit-ch}}))))))
+          (om/build add-node (last sort)
+            {:opts {:z (z/signal this :editable)}}))))))
