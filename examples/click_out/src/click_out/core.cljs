@@ -1,7 +1,7 @@
 (ns ^:figwheel-always click-out.core
     (:require [om.core :as om :include-macros true]
               [om.dom :as dom :include-macros true]
-              [zortable.core :as z]
+              [zortable.util :as u]
               [zortable.click :as click]))
   
 (enable-console-print!)
@@ -15,17 +15,16 @@
   "Recognizes clicks inside or outside."
   [data owner]
   (reify
-    z/IHandle
-    (handle [_ [tag e]]
-      (om/update! data tag (z/event->pos e)))
     om/IDisplayName
     (display-name [_] "Box")
     om/IDidMount
     (did-mount [this]
       (om/set-state! owner :listen-in-key
-        (click/install-in! ["other-box"] #(z/handle this [:click-else %])))
+        (click/install-in! ["other-box"]
+          #(om/update! data :click-else (u/event->pos %))))
       (om/set-state! owner :listen-out-key
-        (click/install-out! ["box"] #(z/handle this [:click-out %]))))
+        (click/install-out! ["box"]
+          #(om/update! data :click-out (u/event->pos %)))))
     om/IWillUnmount
     (will-unmount [this]
       (click/uninstall! (om/get-state owner :listen-in-key))
@@ -33,7 +32,7 @@
     om/IRender
     (render [this]
       (dom/div #js {:className "box"
-                    :onClick #(z/handle this [:click-in %])
+                    :onClick #(om/update! data :click-out (u/event->pos %))
                     :style #js {:backgroundColor "red" 
                                 :height 100 
                                 :width 100}}))))

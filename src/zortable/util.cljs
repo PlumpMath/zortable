@@ -14,3 +14,6 @@
 
 (defn guid []
   (.getNextUniqueId (.getInstance IdGenerator)))
+
+(defn event->pos [e]
+  [(.-clientX e) (.-clientY e)])

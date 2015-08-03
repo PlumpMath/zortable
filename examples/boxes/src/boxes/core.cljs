@@ -1,7 +1,7 @@
 (ns ^:figwheel-always boxes.core
     (:require [om.core :as om :include-macros true]
               [om.dom :as dom :include-macros true]
-              [zortable.core :refer [zortable]]))
+              [zortable.zortable :refer [zortable]]))
 
 (enable-console-print!)
 

@@ -4,7 +4,7 @@
             [om.core :as om :include-macros true]
             [om.dom :as dom :include-macros true]
             [zortable.util :as u]
-            [zortable.core :as z :refer [zortable]]))
+            [zortable.zortable :as z :refer [zortable]]))
 
 ;; ====================================================================== 
 ;; Components
