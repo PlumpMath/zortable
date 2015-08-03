@@ -140,6 +140,8 @@
                     :react-key item-id})))
           sort)))))
 
+(declare with-filler)
+
 (defn zortable
   [{:keys [sort items] :as data} owner {:keys [disabled? pub-ch] :as opts}]
   (letfn [(next-state! [state]
@@ -187,13 +189,21 @@
               (map (fn [item-id]
                      (let [eid (id->eid item-id)
                            item (items item-id)]
-                       (om/build zd/draggable (assoc item :drag/id eid)
+                       (om/build with-filler {:item item :eid eid
+                                              :id id :item-id item-id} 
                          {:opts {:z (z/signal this [:draggable item-id])
                                  :dragger (zd/snapped-drag)
                                  :drag-class (:drag-class opts) 
-                                 :view (:box-view opts)}
-                          :react-key eid})
-                       #_(when (= item-id id)
-                         (om/build sort-filler {:item item :box box}
-                           {:opts opts :react-key "filler"}))))
+                                 :view (:box-view opts)
+                                 :box-filler (:box-filler opts)}
+                          :react-key eid})))
                 ids))))))))
+
+(defn with-filler [{:keys [eid id item-id item]} owner opts]
+  (om/component
+    (dom/div nil
+      (om/build zd/draggable (assoc item :drag/id eid)
+        {:opts opts :react-key eid})
+      (when (= item-id id)
+        (om/build sort-filler {:item item}
+          {:opts opts :react-key "filler"})))))
