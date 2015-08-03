@@ -24,18 +24,15 @@
         state (om/get-state owner)
         state' (step this state action)]
     (when (and (some? state') (not= state state'))
-      (println action)
-      (println
-        (om/get-props owner))
       (om/set-state! owner state')
       (when-let [signal (get-signal this)]
         (reset! signal state')))))
 
 (defn signal-map [owner]
-  (.-z$signals owner))
+  (gobj/get owner "z$signals"))
 
 (defn add-signal! [owner k z]
-  (set! (.-z$signals owner) (merge (signal-map owner) {k z})))
+  (gobj/set owner "z$signals" (merge (signal-map owner) {k z})))
 
 (defn signal [this k]
   (let [owner (get-owner this)]
@@ -56,22 +53,6 @@
   (if (nil? (get m k))
     (assoc m k v)
     m))
-
-;; Should not use a higher order component like this
-
-(defn wire!
-  ([component cursor]
-   (wire! component cursor nil))
-  ([component cursor z]
-   (wire! component cursor z {}))
-  ([component cursor z m]
-   (let [a (str (gensym))
-         component' (fn [cursor' owner' m']
-                      (specify! (component cursor' owner' m') 
-                        IWire
-                        (get-owner [_] owner')
-                        (get-signal [_] z)))]
-     (om/build component' cursor m))))
 
 ;; ====================================================================== 
 ;; Draggable
@@ -140,7 +121,7 @@
     (swap! installed? #(assoc % k false))
     (events/unlistenByKey (om/get-state owner k))))
 
-(defn draggable [item owner {:keys [drag-class view]}]
+(defn draggable [item owner {:keys [drag-class view z]}]
   (reify
     om/IDisplayName
     (display-name [_] "Draggable")
@@ -150,6 +131,9 @@
        :box {:dragging? false
              :top nil
              :left nil}})
+    IWire
+    (get-owner [_] owner)
+    (get-signal [_] z)
     IStep
     (step [this state [tag e]]
       (let [{:keys [box dragger]} state]
@@ -160,7 +144,6 @@
             :drag/stop (drag-stop dragger box e)))))
     om/IRenderState
     (render-state [this {:keys [box]}]
-      (println (:item-id item) box)
       (dom/div #js {:style #js {:position "absolute"
                                 :userSelect "none"
                                 :zIndex 1
@@ -217,6 +200,9 @@
   (reify
     om/IInitState
     (init-state [_] {:a 1})
+    IWire
+    (get-owner [_] owner)
+    (get-signal [_] nil)
     om/IRenderState
     (render-state [this state]
       (let [boxes (map #(:box @(signal this [:draggable (:item-id %)])) items)]
@@ -233,17 +219,17 @@
                                 :left (mean (map :left boxes))})
           (apply dom/div nil
             (map (fn [ item]
-                   (wire! draggable item 
-                     (signal this [:draggable (:item-id item)])
+                   (om/build draggable item 
                      {:opts {:drag-class "box"
                              :react-key (:item-id item)
+                             :z (signal this [:draggable (:item-id item)])
                              :view render-box}}))
               items)))))))
 
 (defn main [data owner]
   (om/component
     (dom/div #js {:style #js {:userSelect "none"}} 
-      (wire! guidelines (:items data)))))
+      (om/build guidelines (:items data)))))
 
 (om/root main app-state
   {:target (. js/document (getElementById "app"))
