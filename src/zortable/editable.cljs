@@ -73,61 +73,39 @@
     (display-name [_] "ListMaker")
     om/IInitState
     (init-state [_]
-      {:z-ch (chan) ;; listens for draggable events
-       :d-id nil    ;; dragging-id
+      {:d-id nil    ;; dragging-id
        :focus-id (if-not (empty? sort) (last sort))})
     z/IWire
     (get-owner [_] owner)
     (get-signal [_] nil)
     z/IStep
-    (step [_ state action]
+    (step [this state [route [tag event]]]
       (letfn [(delete-item [id]
                 (when-not (= 1 (count @sort))
                   (om/transact! items #(dissoc % id))
                   (om/transact! sort (comp vec (partial remove #(= id %))))))]
-        (let [[path [tag event]] action]
-          (case path
-            :editable
-            (let [id event]
-              (case tag
-                :enter (let [idx (inc (u/find-index id @sort))
-                             id (u/guid)]
-                         (om/transact! items #(assoc % id {id-key id val-key ""}))
-                         (om/transact! sort (partial u/insert-at idx id))
-                         (assoc state :focus-id id))
-                :focus (assoc state :focus-id id) 
-                ;; don't delete if it's the one dragging.
-                :blur  (when (and (empty? (get-in @items [id val-key]))
-                               (nil? (om/get-state owner :d-id)))
-                         (delete-item id)
-                         state) 
-                :delete (do (delete-item id)
-                            state)))
-            :zortable
+        (case route 
+          :editable
+          (let [id event]
+            (case tag
+              :enter (let [idx (inc (u/find-index id @sort))
+                           id (u/guid)]
+                       (om/transact! items #(assoc % id {id-key id val-key ""}))
+                       (om/transact! sort (partial u/insert-at idx id))
+                       (assoc state :focus-id id))
+              :focus (assoc state :focus-id id) 
+              ;; don't delete if it's the one dragging.
+              :blur  (when (and (empty? (get-in @items [id val-key]))
+                             (nil? (:drag/id @(z/signal this :zortable))))
+                       (delete-item id)
+                       state) 
+              :delete (do (delete-item id)
+                          state)))
+          :zortable
+          (if (nil? (:drag/id event))
             (println event)))))
-    om/IWillMount 
-    (will-mount [_]
-      #_(go-loop []
-          (let [[tag {:keys [id]}] (<! (om/get-state owner :z-ch))]
-            (when (some? tag)
-              (case tag
-                ;; Tracking who drags
-                :start-drag (om/set-state! owner :d-id id)
-                :stop-drag
-                ;; when stop dragging delete all those who are empty 
-                (do (doseq [rid (->> @items
-                                  (filter (comp empty? #(get % val-key) second))
-                                  (map first)
-                                  (remove #(= % (om/get-state owner :d-id))))]
-                      (delete-item rid))
-                    (om/set-state! owner :d-id nil))
-                nil)
-              (recur)))))
-    om/IWillUnmount
-    (will-unmount [_]
-      (async/close! (om/get-state owner :z-ch)))
     om/IRenderState
-    (render-state [this {:keys [z-ch focus-id]}]
+    (render-state [this {:keys [focus-id]}]
       (dom/div nil
         (apply dom/div #js {:className "list-maker" :ref "ele-list"}
           (let [items' (->> items

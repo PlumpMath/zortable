@@ -105,7 +105,7 @@
       (get-owner [_] owner)
       (get-signal [_] (:z opts))
       z/IStep
-      (step [_ state [[_ id] e]]
+      (step [_ state [[_ id] [_ e]]]
         (let [state' (-> state
                        (update :ids (partial sort-by-pos (:id->eid state)))
                        (assoc :drag/id (if (zd/dragging? (:box e)) id)))]
