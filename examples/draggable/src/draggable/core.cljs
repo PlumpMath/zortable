@@ -2,14 +2,79 @@
     (:import [goog.events EventType])
     (:require [goog.style :as style]
               [goog.dom :as gdom]
+              [goog.object :as gobj]
               [goog.events :as events]
               [om.core :as om :include-macros true]
               [om.dom :as dom :include-macros true]))
 
-(defprotocol IStep
+;; ====================================================================== 
+;; Wiring
+
+
+(defprotocol IWire
   (get-owner [this])
-  (get-signal [this])
+  (get-signal [this]))
+
+(defprotocol IStep
   (step [this state event]))
+
+(defn handle [this action]
+  {:pre [(satisfies? IStep this)]}
+  (let [owner (get-owner this)
+        state (om/get-state owner)
+        state' (step this state action)]
+    (when (and (some? state') (not= state state'))
+      (println action)
+      (println
+        (om/get-props owner))
+      (om/set-state! owner state')
+      (when-let [signal (get-signal this)]
+        (reset! signal state')))))
+
+(defn signal-map [owner]
+  (.-z$signals owner))
+
+(defn add-signal! [owner k z]
+  (set! (.-z$signals owner) (merge (signal-map owner) {k z})))
+
+(defn signal [this k]
+  (let [owner (get-owner this)]
+    (or (get (signal-map owner) k)
+      (let [z (atom {})]
+        (add-watch z k (fn [_ _ _ state']
+                         (om/refresh! owner)
+                         (when (satisfies? IStep this)
+                           (handle this [k state']))))
+        (add-signal! owner k z)
+        z))))
+
+;; TODO
+;; Consinder the three signatures
+;; and in fact add the "feed-state"
+
+(defn assoc-some [m k v]
+  (if (nil? (get m k))
+    (assoc m k v)
+    m))
+
+;; Should not use a higher order component like this
+
+(defn wire!
+  ([component cursor]
+   (wire! component cursor nil))
+  ([component cursor z]
+   (wire! component cursor z {}))
+  ([component cursor z m]
+   (let [a (str (gensym))
+         component' (fn [cursor' owner' m']
+                      (specify! (component cursor' owner' m') 
+                        IWire
+                        (get-owner [_] owner')
+                        (get-signal [_] z)))]
+     (om/build component' cursor m))))
+
+;; ====================================================================== 
+;; Draggable
 
 (defprotocol IDrag
   (drag-start [this state event])
@@ -75,37 +140,10 @@
     (swap! installed? #(assoc % k false))
     (events/unlistenByKey (om/get-state owner k))))
 
-;; Should consider the three elements.
-(defn handle [this action]
-  {:pre [(satisfies? IStep this)]}
-  (let [owner (get-owner this)
-        state (om/get-state owner)
-        state' (step this state action)]
-    (when (and (some? state') (not= state state'))
-      (om/set-state! owner state')
-      (when-let [signal (get-signal this)]
-        (reset! signal state')))))
-
-(defn signal-map [owner]
-  (.-z$signals owner))
-
-(defn add-signal! [owner k z]
-  (set! (.-z$signals owner) (merge (signal-map owner) {k z})))
-
-(defn signal [this k]
-  (let [owner om/*parent*]
-    (or (get (signal-map owner) k)
-      (let [z (atom {})]
-        (add-watch z k (fn [_ _ _ state']
-                         (om/update-state! owner identity)
-                         (when (satisfies? IStep this)
-                           (handle this [k state']))))
-        (add-signal! owner k z)
-        z))))
-
-(defn draggable [item owner {:keys [drag-class z view]}]
+(defn draggable [item owner {:keys [drag-class view]}]
   (reify
-    om/IDisplayName (display-name [_] "Box")
+    om/IDisplayName
+    (display-name [_] "Draggable")
     om/IInitState
     (init-state [_]
       {:dragger (free-drag)
@@ -113,8 +151,6 @@
              :top nil
              :left nil}})
     IStep
-    (get-owner [this] owner)
-    (get-signal [this] z)
     (step [this state [tag e]]
       (let [{:keys [box dragger]} state]
         (assoc state :box
@@ -124,6 +160,7 @@
             :drag/stop (drag-stop dragger box e)))))
     om/IRenderState
     (render-state [this {:keys [box]}]
+      (println (:item-id item) box)
       (dom/div #js {:style #js {:position "absolute"
                                 :userSelect "none"
                                 :zIndex 1
@@ -176,11 +213,10 @@
 (defn mean [xs]
   (/ (reduce + xs) (count xs)))
 
-(defn wire! [component props address opts]
-  (om/build component props opts))
-
 (defn guidelines [items owner]
   (reify
+    om/IInitState
+    (init-state [_] {:a 1})
     om/IRenderState
     (render-state [this state]
       (let [boxes (map #(:box @(signal this [:draggable (:item-id %)])) items)]
@@ -197,16 +233,19 @@
                                 :left (mean (map :left boxes))})
           (apply dom/div nil
             (map (fn [ item]
-                   (om/build draggable item 
+                   (wire! draggable item 
+                     (signal this [:draggable (:item-id item)])
                      {:opts {:drag-class "box"
-                             :z (signal this [:draggable (:item-id item)]) 
+                             :react-key (:item-id item)
                              :view render-box}}))
               items)))))))
 
 (defn main [data owner]
   (om/component
     (dom/div #js {:style #js {:userSelect "none"}} 
-      (om/build guidelines (:items data)))))
+      (wire! guidelines (:items data)))))
 
 (om/root main app-state
-  {:target (. js/document (getElementById "app"))})
+  {:target (. js/document (getElementById "app"))
+   ;; :descriptor (om/no-local-descriptor om/no-local-state-methods)
+   })
