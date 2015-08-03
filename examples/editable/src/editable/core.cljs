@@ -3,7 +3,8 @@
     (:require [cljs.core.async :as async :refer (<! >! chan put!)]
               [om.core :as om :include-macros true]
               [om.dom :as dom :include-macros true]
-              [zortable.editable :refer [list-maker]]))
+              [zortable.core :as z]
+              [zortable.editable :as ze]))
 
 (enable-console-print!)
 
@@ -24,11 +25,16 @@
 
 (defn add-node
   "Add button for adding a new list element"
-  [last-sort owner {:keys [edit-ch]}]
-  (om/component
-    (dom/div #js {:style #js {:cursor "pointer"
-                              :font-size "2em"}
-                  :onClick #(put! edit-ch [:enter last-sort])} "+")))
+  [last-sort owner {:keys [z]}]
+  (reify
+    z/IWire
+    (get-owner [_] owner)
+    (get-signal [_] z)
+    om/IRender
+    (render [this]
+      (dom/div #js {:style #js {:cursor "pointer"
+                                :font-size "2em"}
+                    :onClick #(z/raise! this [:enter last-sort])} "+"))))
 
 (defn render-state [state owner]
   (reify
@@ -41,7 +47,7 @@
           (om/build-all
             #(om/component (dom/li nil (get-in state [:items % :value])))
             (:sort state)))
-        (om/build list-maker state
+        (om/build ze/list-maker state
                   {:opts {:add-node add-node
                           :id-key :item-id
                           :val-key :value}})))))

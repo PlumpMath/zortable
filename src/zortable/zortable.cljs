@@ -103,7 +103,7 @@
          :id->eid (new-ids @sort)})
       z/IWire
       (get-owner [_] owner)
-      (get-signal [_] nil)
+      (get-signal [_] (:z opts))
       z/IStep
       (step [_ state [[_ id] e]]
         (let [state' (-> state

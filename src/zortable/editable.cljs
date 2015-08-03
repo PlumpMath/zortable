@@ -80,32 +80,41 @@
     (get-owner [_] owner)
     (get-signal [_] nil)
     z/IStep
-    (step [_ state [path [tag id]]]
+    (step [_ state action]
       (letfn [(delete-item [id]
                 (when-not (= 1 (count @sort))
                   (om/transact! items #(dissoc % id))
                   (om/transact! sort (comp vec (partial remove #(= id %))))))]
-        (case tag
-          :enter (let [idx (inc (u/find-index id @sort))
-                       id (u/guid)]
-                   (om/transact! items #(assoc % id {id-key id val-key ""}))
-                   (om/transact! sort (partial u/insert-at idx id))
-                   (assoc state :focus-id id))
-          :focus (assoc state :focus-id id) 
-          :blur  (when (and (empty? (get-in @items [id val-key]))
-                            (nil? (om/get-state owner :d-id)))
-                   (delete-item id)
-                   state) 
-          :delete (do (delete-item id)
-                      state))))
+        (let [[path [tag event]] action]
+          (case path
+            :editable
+            (let [id event]
+              (case tag
+                :enter (let [idx (inc (u/find-index id @sort))
+                             id (u/guid)]
+                         (om/transact! items #(assoc % id {id-key id val-key ""}))
+                         (om/transact! sort (partial u/insert-at idx id))
+                         (assoc state :focus-id id))
+                :focus (assoc state :focus-id id) 
+                ;; don't delete if it's the one dragging.
+                :blur  (when (and (empty? (get-in @items [id val-key]))
+                               (nil? (om/get-state owner :d-id)))
+                         (delete-item id)
+                         state) 
+                :delete (do (delete-item id)
+                            state)))
+            :zortable
+            (println event)))))
     om/IWillMount 
     (will-mount [_]
       #_(go-loop []
           (let [[tag {:keys [id]}] (<! (om/get-state owner :z-ch))]
             (when (some? tag)
               (case tag
+                ;; Tracking who drags
                 :start-drag (om/set-state! owner :d-id id)
                 :stop-drag
+                ;; when stop dragging delete all those who are empty 
                 (do (doseq [rid (->> @items
                                   (filter (comp empty? #(get % val-key) second))
                                   (map first)
@@ -127,7 +136,8 @@
                          (into {}))]
             (if-not (:disabled? opts)
               [(om/build zz/zortable {:sort sort :items items'} 
-                 {:opts {:box-view editable 
+                 {:opts {:z (z/signal this :zortable)
+                         :box-view editable 
                          :id-key :item-id
                          :drag-class item-drag-class 
                          :box-filler render-filler

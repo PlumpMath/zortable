@@ -21,6 +21,19 @@
 (defprotocol IStep
   (step [this state event]))
 
+(defrecord Signal [route state]
+  IDeref
+  (-deref [_] (-deref state))
+  IReset
+  (-reset! [_ v] (reset! state v))
+  IWatchable
+  (-notify-watches [_ oldval newval]
+    (-notify-watches state oldval newval))
+  (-add-watch [_ k f]
+    (-add-watch state k f))
+  (-remove-watch [_ k]
+    (-remove-watch state k)))
+
 (defn handle [this action]
   {:pre [(satisfies? IStep this)]}
   (let [owner (get-owner this)
@@ -29,7 +42,7 @@
     (when (and (some? state') (not= state state'))
       (om/set-state! owner state')
       (when-let [signal (get-signal this)]
-        (reset! signal state')))))
+        (reset! signal [:z/step state'])))))
 
 (defn raise! [this action]
   {:pre [(satisfies? IWire this)]}
@@ -42,13 +55,13 @@
 (defn add-signal! [owner k z]
   (gobj/set owner "z$signals" (merge (signal-map owner) {k z})))
 
-(defn signal [this k]
+(defn signal [this route]
   (let [owner (get-owner this)]
-    (or (get (signal-map owner) k)
-      (let [z (atom {})]
-        (add-watch z k (fn [_ _ _ state']
-                         (om/refresh! owner)
-                         (when (satisfies? IStep this)
-                           (handle this [k state']))))
-        (add-signal! owner k z)
+    (or (get (signal-map owner) route)
+      (let [z (Signal. route (atom {}))]
+        (add-watch z route (fn [_ _ _ state']
+                             (om/refresh! owner)
+                             (when (satisfies? IStep this)
+                               (handle this [route state']))))
+        (add-signal! owner z route)
         z))))
