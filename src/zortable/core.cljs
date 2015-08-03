@@ -42,6 +42,9 @@
     (when (and (some? state') (not= state state'))
       (om/set-state! owner state')
       (when-let [signal (get-signal this)]
+        ;; TODO: how do we compose events?
+        ;; Maybe should formalize that action [tag data] and replace
+        ;; :z/step with tag
         (reset! signal [:z/step state'])))))
 
 (defn raise! [this action]
