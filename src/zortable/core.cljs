@@ -23,7 +23,7 @@
 
 (defrecord Signal [route state]
   IDeref
-  (-deref [_] (-deref state))
+  (-deref [_] (second (-deref state)))
   IReset
   (-reset! [_ v] (reset! state v))
   IWatchable
@@ -35,7 +35,7 @@
     (-remove-watch state k)))
 
 (defn handle [this action]
-  {:pre [(satisfies? IStep this)]}
+  {:pre [(satisfies? IStep this) (satisfies? IWire this)]}
   (let [owner (get-owner this)
         state (om/get-state owner)
         state' (step this state action)]
@@ -46,8 +46,7 @@
 
 (defn raise! [this action]
   {:pre [(satisfies? IWire this)]}
-  (let [z (get-signal this)]
-    (reset! z action)))
+  (reset! (get-signal this) action))
 
 (defn signal-map [owner]
   (gobj/get owner "z$signals"))
@@ -63,5 +62,5 @@
                              (om/refresh! owner)
                              (when (satisfies? IStep this)
                                (handle this [route state']))))
-        (add-signal! owner z route)
+        (add-signal! owner route z)
         z))))
