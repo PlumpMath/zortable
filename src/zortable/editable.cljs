@@ -84,7 +84,8 @@
                   (om/transact! items #(dissoc % id))
                   (om/transact! sort (comp vec (partial remove #(= id %))))))]
         (case route 
-          :editable
+          :editable 
+          ;; Pattern matching
           (let [id event]
             (case tag
               :enter (let [idx (inc (u/find-index id @sort))
@@ -93,13 +94,13 @@
                        (om/transact! sort (partial u/insert-at idx id))
                        (assoc state :focus-id id))
               :focus (assoc state :focus-id id) 
-              :blur  (when (and (empty? (get-in @items [id val-key]))
-                                (nil? (:drag/id @(z/signal this :zortable))))
-                       (doseq [rid (->> @items
-                                     (filter (comp empty? #(get % val-key) second))
-                                     (map first))]
-                         (delete-item rid))
-                       state) 
+              :blur (when (and (empty? (get-in @items [id val-key]))
+                            (nil? (:drag/id @(z/signal this :zortable))))
+                      (doseq [rid (->> @items
+                                    (filter (comp empty? #(get % val-key) second))
+                                    (map first))]
+                        (delete-item rid))
+                      state) 
               :delete (do (delete-item id)
                           state)))
           state)))
