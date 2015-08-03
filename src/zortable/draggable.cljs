@@ -48,6 +48,9 @@
 ;; ====================================================================== 
 ;; Draggable
 
+;; These protocols where borrowed from https://github.com/sgrove/om-draggable/
+;; There they complect the update step with the sideffect.
+
 (defprotocol IDrag
   (drag-start [this state event])
   (drag-move [this state event])
