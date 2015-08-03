@@ -10,6 +10,14 @@
   (get-owner [this])
   (get-signal [this]))
 
+;; I choose how to raise! my state after each step 
+(defprotocol IMontior
+  (monitor [this state' event]))
+
+;; Make sideffects?
+(defprotocol IHandle
+  (handle! [this state' event]))
+
 (defprotocol IStep
   (step [this state event]))
 
