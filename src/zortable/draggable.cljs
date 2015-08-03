@@ -9,15 +9,27 @@
             [zortable.util :as u]))
 
 ;; ====================================================================== 
-;; Draggable
+;; Box
 
-(defprotocol IDrag
-  (drag-start [this state event])
-  (drag-move [this state event])
-  (drag-stop [this state event]))
+(defn add-node
+  "Adds the DOM node to the box as :node"
+  [box]
+  {:pre [(some? (:eid box))]}
+  (assoc box :node (.getElementById js/document (:eid box))))
 
-(defn dragging? [box]
-  (:dragging? box))
+(defn add-size
+  "Adds the box size as :width and :height from the DOM node"
+  [box]
+  (let [n (aget (.-childNodes (:node box)) 0) 
+        size (style/getSize n)]
+    (assoc box :width (.-width size) :height (.-height size))))
+
+(defn box-center
+  "Calculates the box-center position"
+  [box]
+  (letfn [(add [kb ks]
+            (+ (kb box) (/ (ks box) 2)))]
+    [(add :left :width) (add :top :height)]))
 
 (defn topleft-pos [{:keys [left top]}]
   [left top])
@@ -32,6 +44,17 @@
         left (.-x final-pos)
         top (.-y final-pos)]
     (assoc box :left left :top top)))
+
+;; ====================================================================== 
+;; Draggable
+
+(defprotocol IDrag
+  (drag-start [this state event])
+  (drag-move [this state event])
+  (drag-stop [this state event]))
+
+(defn dragging? [box]
+  (:dragging? box))
 
 (defn element-inside?
   "Finds if an element is inside another element with the specified class"

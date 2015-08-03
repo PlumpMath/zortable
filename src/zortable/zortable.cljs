@@ -13,57 +13,12 @@
             [zortable.util :as u]))
 
 ;; ====================================================================== 
-;; General Protocols
-
-(defprotocol IHandle
-  (handle [_ e]))
-
-;; ======================================================================  
-;; Box
-
-(defn add-node
-  "Adds the DOM node to the box as :node"
-  [box]
-  {:pre [(some? (:eid box))]}
-  (assoc box :node (.getElementById js/document (:eid box))))
-
-(defn add-size
-  "Adds the box size as :width and :height from the DOM node"
-  [box]
-  (let [n (aget (.-childNodes (:node box)) 0) 
-        size (style/getSize n)]
-    (assoc box :width (.-width size) :height (.-height size))))
-
-(defn add-pos
-  "Adds the box position as :left and :top from the DOM node"
-  [box]
-  (let [final-pos (style/getPosition (:node box))
-        left (.-x final-pos)
-        top (.-y final-pos)]
-    (assoc box :left left :top top)))
-
-(defn box-center
-  "Calculates the box-center position"
-  [box]
-  (letfn [(add [kb ks]
-            (+ (kb box) (/ (ks box) 2)))]
-    [(add :left :width) (add :top :height)]))
-
-(defn topleft-pos [{:keys [left top]}]
-  [left top])
-
-(defn box-offset [pos box]
-  (->> box topleft-pos (mapv - pos)))
-
-(defn element-inside?
-  "Finds if an element is inside another element with the specified class"
-  [class element]
-  (some? (gdom/getAncestorByClass element class)))
+;; Indexes
 
 (defn eid->box
   "Finds the internal eid from the user given id"
   [id]
-  (add-size (add-pos (add-node {:eid id}))))
+  (zd/add-size (zd/add-pos (zd/add-node {:eid id}))))
 
 (defn eid->id
   "Returns the user given id from the internal eid"
@@ -71,27 +26,16 @@
   (some (fn [[id eid]] (if (= ele-id eid) id)) id->eid))
 
 (defn sort-by-pos
-  "Sorts the user-given ids by their vertical positions in the DOM into a vector"
+  "Sorts the user-given ids by their vertical positions 
+   in the DOM into a vector"
   [id->eid ids]
-  (vec (sort-by (comp second box-center eid->box id->eid) ids)))
+  (vec (sort-by (comp second zd/box-center eid->box id->eid) ids)))
+
+(defn new-ids [sort]
+  (zipmap sort (mapv (fn [_] (u/guid)) sort)))
 
 ;; ====================================================================== 
 ;; Wrapper Components
-
-(defn sort-draggable [{:keys [box item]} owner opts]
-  (reify
-    om/IDisplayName (display-name [_] "SortDraggable")
-    om/IRender
-    (render [_]
-      (dom/div #js {:id (:eid box)
-                    :className "sortable-draggable"
-                    :style #js {:position "absolute"
-                                :zIndex 1
-                                :top (:top box)
-                                :left (:left box)}}
-        (om/build (:box-view opts) item
-          {:react-key (:id box)
-           :opts (:opts opts)})))))
 
 (defn sort-filler [{:keys [item box]} owner opts]
   (reify
@@ -102,20 +46,6 @@
         (om/build (:box-filler opts) item
           {:init-state (select-keys box [:width :height])
            :opts (:opts opts)})))))
-
-(defn sort-wrapper [item owner opts]
-  {:pre [(fn? (:handler opts))]}
-  (reify
-    om/IDisplayName
-    (display-name [_] "SortWrapper")
-    om/IRenderState
-    (render-state [_ {:keys [eid id]}]
-      (dom/div #js {:className "sortable-container"}
-        (om/build (:box-view opts) item
-          {:opts (:opts opts) :react-key id})))))
-
-(defn new-ids [sort]
-  (zipmap sort (mapv (fn [_] (u/guid)) sort)))
 
 (def zortable-styles #js {:WebkitTouchCallout "none"
                           :WebkitUserSelect "none"
