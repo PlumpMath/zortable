@@ -62,7 +62,7 @@
                  {:opts opts :init-state {:id item-id}}))
           sort)))))
 
-;; Needs to be a separate component:
+;; with-filler needs to be a separate component:
 ;; https://facebook.github.io/react/docs/create-fragment.html
 ;; When reordering a 'set' of children, you either wrap them or
 ;; provide a key-fragment
@@ -106,9 +106,14 @@
       (get-signal [_] nil)
       z/IStep
       (step [_ state [[_ id] e]]
-        (-> state
-          (update :ids (partial sort-by-pos (:id->eid state)))
-          (assoc :drag/id (if (zd/dragging? (:box e)) id))))
+        (let [state' (-> state
+                       (update :ids (partial sort-by-pos (:id->eid state)))
+                       (assoc :drag/id (if (zd/dragging? (:box e)) id)))]
+          ;; FIX: sideffects shouldn't be here
+          (when (and (not (zd/dragging? (:box e)))
+                     (not= @sort (:ids state')))
+            (om/update! sort (:ids state')))
+          state'))
       om/IWillReceiveProps
       (will-receive-props [_ {:keys [items sort]}]
         (assert (= (count items) (count sort))
