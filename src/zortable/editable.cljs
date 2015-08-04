@@ -107,25 +107,21 @@
     om/IRenderState
     (render-state [this {:keys [focus-id]}]
       (dom/div nil
-        (apply dom/div #js {:className "list-maker" :ref "ele-list"}
+        (dom/div #js {:className "list-maker" :ref "ele-list"}
           (let [items' (->> items
                          (map (fn [[k v]]
                                 [k (assoc v :focus? (= focus-id k))]))
                          (into {}))]
-            (if-not (:disabled? opts)
-              [(om/build zz/zortable {:sort sort :items items'} 
-                 {:opts {:z (z/signal this :zortable)
-                         :box-view editable 
-                         :id-key :item-id
-                         :drag-class item-drag-class 
-                         :box-filler render-filler
-                         :opts {:z (z/signal this :editable)
-                                :val-key val-key
-                                :id-key id-key}}})]
-              (map #(om/build editable (get items' %)
-                      {:opts {:z (z/signal this :editable)}
-                       :key id-key})
-                sort))))
+            (om/build zz/zortable {:sort sort :items items'} 
+              {:opts {:z (z/signal this :zortable)
+                      :box-view editable 
+                      :id-key :item-id
+                      :drag-class item-drag-class 
+                      :box-filler render-filler
+                      :disabled? (:disabled? opts)
+                      :opts {:z (z/signal this :editable)
+                             :val-key val-key
+                             :id-key id-key}}})))
         (if (some? add-node)
           (om/build add-node (last sort)
             {:opts {:z (z/signal this :editable)}}))))))
