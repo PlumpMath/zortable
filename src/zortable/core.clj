@@ -1,6 +1,7 @@
 (ns zortable.core)
 
 ;; TODO: check for signals in bindings
+;; TODO: implement intial value instead of nil?
 
 (defmacro lets [bindings expr]
   (assert (vector? bindings) "The bindings should be a vector")
@@ -10,7 +11,7 @@
         indexed-signals (vec (map-indexed vector signals))]
     `(let [f# (fn ~syms
                 ~expr)
-           z# (atom {})]
+           z# (zortable.core/Signal. (gensym) (atom nil))]
        (doseq [[i# s#] ~indexed-signals]
          (add-watch s# (gensym)
            (fn [~'_ ~'_ ~'_ state#]
