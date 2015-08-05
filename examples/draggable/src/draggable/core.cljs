@@ -1,7 +1,7 @@
 (ns ^:figwheel-always draggable.core
     (:require [om.core :as om :include-macros true]
               [om.dom :as dom :include-macros true]
-              [zortable.core :as z]
+              [zortable.core :as z :include-macros true]
               [zortable.zortable :as zz]
               [zortable.draggable :as zd]))
 
@@ -53,10 +53,10 @@
         (dom/div nil
           (om/build zd/draggable (first items)
             {:opts {:drag-class "box"
-                    :s [(z/signal this [:draggable (:item-id (first items))])
-                        (fn [s] (-> s
-                                 (dissoc :dragger)
-                                 (update-in [:box :left] (partial + 100))))]
+                    :s (z/lets [ds (z/signal this [:draggable (:item-id (first items))])]
+                         (-> ds
+                           (dissoc :dragger)
+                           (update-in [:box :left] (partial + 100))))
                     :view render-box}})
           (om/build render-box {:height box-side 
                                 :width 10

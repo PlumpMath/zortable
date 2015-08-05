@@ -136,12 +136,11 @@
     (will-mount [this]
       ;; half of this should happen at build,
       ;; the other half when the signal is created
-      (let [[s f] (z/get-source this)
-            f (if (nil? f) identity f)]
+      (let [s (z/get-source this)]
         (when (some? s) 
           (add-watch s ::d
             (fn [_ _ _ state']
-              (om/set-state! owner (f (second state'))))))))
+              (om/set-state! owner (second state')))))))
     om/IRenderState
     (render-state [this {:keys [box]}]
       (dom/div #js {:id (:drag/id item)
