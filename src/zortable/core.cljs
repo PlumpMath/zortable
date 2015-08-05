@@ -8,7 +8,8 @@
 (defprotocol IWire
   "Internal protocol used to pass signals under the covers"
   (get-owner [this])
-  (get-signal [this]))
+  (get-signal [this])
+  (get-source [this]))
 
 ;; I choose how to raise! my state after each step 
 (defprotocol IMontior
@@ -36,16 +37,17 @@
 
 (defn handle [this action]
   {:pre [(satisfies? IStep this) (satisfies? IWire this)]}
-  (let [owner (get-owner this)
-        state (om/get-state owner)
-        state' (step this state action)]
-    (when (and (some? state') (not= state state'))
-      (om/set-state! owner state')
-      (when-let [signal (get-signal this)]
-        ;; TODO: how do we compose events?
-        ;; Maybe should formalize that action [tag data] and replace
-        ;; :z/step with tag
-        (reset! signal [:z/step state'])))))
+  (when (nil? (get-source this))
+    (let [owner (get-owner this)
+          state (om/get-state owner)
+          state' (step this state action)]
+      (when (and (some? state') (not= state state'))
+        (om/set-state! owner state')
+        (when-let [signal (get-signal this)]
+          ;; TODO: how do we compose events?
+          ;; Maybe should formalize that action [tag data] and replace
+          ;; :z/step with tag
+          (reset! signal [:z/step state']))))))
 
 (defn raise! [this action]
   {:pre [(satisfies? IWire this)]}

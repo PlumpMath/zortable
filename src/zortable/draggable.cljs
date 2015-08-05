@@ -108,7 +108,7 @@
     (swap! installed? #(assoc % k false))
     (events/unlistenByKey (om/get-state owner k))))
 
-(defn draggable [item owner {:keys [dragger drag-class view z] :as opts}]
+(defn draggable [item owner {:keys [dragger drag-class view s z] :as opts}]
   {:pre [(fn? view)]}
   (reify
     om/IDisplayName
@@ -123,6 +123,7 @@
     z/IWire
     (get-owner [_] owner)
     (get-signal [_] z)
+    (get-source [_] s)
     z/IStep
     (step [this state [tag e]]
       (let [{:keys [box dragger]} state]
@@ -131,6 +132,16 @@
             :drag/start (drag-start dragger box e)
             :drag/move (drag-move dragger box e)
             :drag/stop (drag-stop dragger box e)))))
+    om/IWillMount
+    (will-mount [this]
+      ;; half of this should happen at build,
+      ;; the other half when the signal is created
+      (let [[s f] (z/get-source this)
+            f (if (nil? f) identity f)]
+        (when (some? s) 
+          (add-watch s ::d
+            (fn [_ _ _ state']
+              (om/set-state! owner (f (second state'))))))))
     om/IRenderState
     (render-state [this {:keys [box]}]
       (dom/div #js {:id (:drag/id item)

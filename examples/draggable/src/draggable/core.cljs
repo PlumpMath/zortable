@@ -51,6 +51,13 @@
     (render-state [this state]
       (let [boxes (map #(:box @(z/signal this [:draggable (:item-id %)])) items)]
         (dom/div nil
+          (om/build zd/draggable (first items)
+            {:opts {:drag-class "box"
+                    :s [(z/signal this [:draggable (:item-id (first items))])
+                        (fn [s] (-> s
+                                 (dissoc :dragger)
+                                 (update-in [:box :left] (partial + 100))))]
+                    :view render-box}})
           (om/build render-box {:height box-side 
                                 :width 10
                                 :top (mean (map :top boxes))
@@ -62,7 +69,7 @@
                                 :hue 100
                                 :left (mean (map :left boxes))})
           (apply dom/div nil
-            (map (fn [ item]
+            (map (fn [item]
                    (om/build zd/draggable item 
                      {:opts {:drag-class "box"
                              :react-key (:item-id item)
