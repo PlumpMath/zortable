@@ -15,5 +15,7 @@
        (doseq [[i# s#] ~indexed-signals]
          (add-watch s# (gensym)
            (fn [~'_ ~'_ ~'_ state#]
-             (reset! z# [(first state#) (apply f# (assoc (mapv deref ~signals) i# (second state#)))]))))
+             (reset! z#
+               [(first state#)
+                (apply f# (assoc (mapv deref ~signals) i# (second state#)))]))))
        z#)))
